@@ -1,15 +1,23 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
 {
+    [Header("Movement Settings")]
     public float moveSpeed = 8f;
+
+    [Header("Animation")]
+    [Tooltip("Drag the child 3D model that has the Animator component into this slot")]
+    public Animator anim;
+
     private CharacterController controller;
+    private Camera mainCamera;
 
     void Start()
     {
+        // Automatically grab the components we need
         controller = GetComponent<CharacterController>();
+        mainCamera = Camera.main;
     }
 
     void Update()
@@ -20,44 +28,41 @@ public class PlayerController : MonoBehaviour
 
     void MovePlayer()
     {
-        // Get keyboard input using the New Input System
-        float horizontal = 0f;
-        float vertical = 0f;
+        // 1. Get input from WASD or Arrow Keys
+        float horizontal = Input.GetAxisRaw("Horizontal");
+        float vertical = Input.GetAxisRaw("Vertical");
 
-        if (Keyboard.current != null)
+        // 2. Calculate movement direction (normalized so diagonal movement isn't faster)
+        Vector3 moveDirection = new Vector3(horizontal, 0f, vertical).normalized;
+
+        // 3. Move the character using the Character Controller
+        controller.Move(moveDirection * moveSpeed * Time.deltaTime);
+
+        // 4. Send the speed to the Animator so it knows when to transition to the Walk animation
+        if (anim != null)
         {
-            if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) vertical = 1f;
-            if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) vertical = -1f;
-            if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed) horizontal = 1f;
-            if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed) horizontal = -1f;
+            // moveDirection.magnitude will be 0 when standing still, and 1 when moving
+            anim.SetFloat("Speed", moveDirection.magnitude);
         }
-
-        Vector3 direction = new Vector3(horizontal, 0f, vertical).normalized;
-
-        if (direction.magnitude >= 0.1f)
-        {
-            controller.Move(direction * moveSpeed * Time.deltaTime);
-        }
-
-        // Gravity
-        controller.Move(Vector3.down * 9.81f * Time.deltaTime);
     }
 
     void LookAtMouse()
     {
-        // Get mouse position using the New Input System
-        if (Mouse.current != null && Camera.main != null)
-        {
-            Vector2 mousePosition = Mouse.current.position.ReadValue();
-            Ray ray = Camera.main.ScreenPointToRay(mousePosition);
-            Plane groundPlane = new Plane(Vector3.up, Vector3.zero);
+        // 1. Create a ray from the mouse position into the 3D world
+        Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
 
-            if (groundPlane.Raycast(ray, out float rayDistance))
-            {
-                Vector3 point = ray.GetPoint(rayDistance);
-                Vector3 lookPosition = new Vector3(point.x, transform.position.y, point.z);
-                transform.LookAt(lookPosition);
-            }
+        // 2. Create a mathematical plane at the player's exact height (so aiming works on ramps!)
+        Plane groundPlane = new Plane(Vector3.up, transform.position);
+        float rayDistance;
+
+        // 3. If the ray hits the plane, find that exact point
+        if (groundPlane.Raycast(ray, out rayDistance))
+        {
+            Vector3 pointToLook = ray.GetPoint(rayDistance);
+
+            // 4. Look at the point (keeping the player perfectly upright)
+            Vector3 lookTarget = new Vector3(pointToLook.x, transform.position.y, pointToLook.z);
+            transform.LookAt(lookTarget);
         }
     }
 }
