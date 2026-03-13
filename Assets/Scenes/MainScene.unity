@@ -189,12 +189,11 @@ PrefabInstance:
       objectReference: {fileID: 9100000, guid: 81603d2ca9144354fa3e94252005d1c8, type: 2}
     - target: {fileID: 5866666021909216657, guid: 1198606b8f179254ea2e979d74ae64a2, type: 3}
       propertyPath: m_WarningMessage
-      value: "\nBinding warning: Some generic clip(s) animate transforms that are
-        already bound by a Humanoid avatar. These transforms can only be changed
-        by Humanoid clips.\n\tTransform 'Hips'\n\tTransform 'LeftArm'\n\tTransform
-        'Head'\n\tTransform 'LeftForeArm'\n\tTransform 'LeftHand'\n\tTransform 'RightShoulder'\n\tTransform
-        'LeftLeg'\n\tTransform 'RightForeArm'\n\tTransform 'Spine01'\n\tTransform
-        'Spine'\n\tand more ...\n\tFrom animation clip 'Casual_Walk'"
+      value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: 1198606b8f179254ea2e979d74ae64a2, type: 3}
+      propertyPath: m_ApplyRootMotion
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 8111781155169087978, guid: 1198606b8f179254ea2e979d74ae64a2, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
@@ -208,6 +207,11 @@ PrefabInstance:
 --- !u!4 &99191007 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 1198606b8f179254ea2e979d74ae64a2, type: 3}
+  m_PrefabInstance: {fileID: 99191006}
+  m_PrefabAsset: {fileID: 0}
+--- !u!95 &143444329 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 1198606b8f179254ea2e979d74ae64a2, type: 3}
   m_PrefabInstance: {fileID: 99191006}
   m_PrefabAsset: {fileID: 0}
 --- !u!1 &330585543
@@ -636,7 +640,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   moveSpeed: 25
-  anim: {fileID: 0}
+  anim: {fileID: 143444329}
 --- !u!143 &635695424
 CharacterController:
   m_ObjectHideFlags: 0

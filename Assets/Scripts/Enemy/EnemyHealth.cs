@@ -2,17 +2,28 @@ using UnityEngine;
 
 public class EnemyHealth : MonoBehaviour
 {
-    public int health = 3; // Takes 3 hits to destroy
+    public float maxHealth = 10f;
+    public float health;
+    public float armor = 0f;
+    public float magicResist = 0f;
 
-    public void TakeDamage(int damage)
+    void Awake()
     {
-        health -= damage;
+        health = maxHealth;
+    }
 
-        // Make the enemy flash or shrink here later!
+    // Accept float damage
+    public void TakeDamage(float amount)
+    {
+        health -= amount;
+        Debug.Log($"{gameObject.name} took {amount:F1} damage. Remaining: {health:F1}");
+        if (health <= 0f)
+            Die();
+    }
 
-        if (health <= 0)
-        {
-            Destroy(gameObject); // Poof! Enemy is dead.
-        }
+    void Die()
+    {
+        // TODO: VFX, pooling, drop loot, etc.
+        Destroy(gameObject);
     }
 }
