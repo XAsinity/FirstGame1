@@ -1,17 +1,75 @@
 using UnityEngine;
 
-[RequireComponent(typeof(PlayerManager))]
+/// Routes ability hotkeys (1-4) and Primary Attack (mouse left) to PlayerManager.CurrentCharacter.
+/// Safe: does nothing if no character selected or PlayerManager.InputEnabled is false.
+/// Adds console logs so you can see when keys are pressed and what the system attempted.
+[DisallowMultipleComponent]
 public class AbilityInput : MonoBehaviour
 {
     void Update()
     {
-        var player = PlayerManager.Instance;
-        if (player == null || player.CurrentCharacter == null) return;
-        var ch = player.CurrentCharacter;
+        if (PlayerManager.Instance == null)
+        {
+            // No manager in scene
+            return;
+        }
 
-        if (Input.GetKeyDown(KeyCode.Alpha1) && ch.abilities.Count > 0) ch.UseAbility(ch.abilities[0]);
-        if (Input.GetKeyDown(KeyCode.Alpha2) && ch.abilities.Count > 1) ch.UseAbility(ch.abilities[1]);
-        if (Input.GetKeyDown(KeyCode.Alpha3) && ch.abilities.Count > 2) ch.UseAbility(ch.abilities[2]);
-        if (Input.GetKeyDown(KeyCode.Alpha4) && ch.abilities.Count > 3) ch.UseAbility(ch.abilities[3]);
+        // Inputs are disabled until PlayerManager enables them (a character is selected)
+        if (!PlayerManager.Instance.InputEnabled) return;
+
+        var player = PlayerManager.Instance.CurrentCharacter;
+        if (player == null) return;
+
+        // Primary attack (M1)
+        if (Input.GetMouseButtonDown(0))
+        {
+            Debug.Log("[Input] M1 pressed -> PrimaryAttack()");
+            player.PrimaryAttack();
+        }
+
+        // Abilities 1-4
+        if (Input.GetKeyDown(KeyCode.Alpha1))
+        {
+            Debug.Log("[Input] Alpha1 pressed -> Ability 0");
+            TryUseAbility(0, player);
+        }
+        if (Input.GetKeyDown(KeyCode.Alpha2))
+        {
+            Debug.Log("[Input] Alpha2 pressed -> Ability 1");
+            TryUseAbility(1, player);
+        }
+        if (Input.GetKeyDown(KeyCode.Alpha3))
+        {
+            Debug.Log("[Input] Alpha3 pressed -> Ability 2");
+            TryUseAbility(2, player);
+        }
+        if (Input.GetKeyDown(KeyCode.Alpha4))
+        {
+            Debug.Log("[Input] Alpha4 pressed -> Ability 3");
+            TryUseAbility(3, player);
+        }
+    }
+
+    private void TryUseAbility(int index, Character player)
+    {
+        if (player == null) return;
+        if (player.abilities == null) return;
+        if (index < 0 || index >= player.abilities.Count) return;
+
+        var ability = player.abilities[index];
+        if (ability == null)
+        {
+            Debug.Log($"[Input] Ability slot {index} is empty.");
+            return;
+        }
+
+        if (!player.CanUseAbility(ability))
+        {
+            Debug.Log($"[Input] Cannot use ability '{ability.abilityName}' right now (cooldown/resource).");
+            return;
+        }
+
+        Debug.Log($"[Input] Using ability '{ability.abilityName}'");
+        player.UseAbility(ability);
     }
 }

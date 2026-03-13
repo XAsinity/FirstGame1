@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c47d96c0d7935e4faa56f19b184a218, type: 3}
+  m_Name: BarbarianStats
+  m_EditorClassIdentifier: Assembly-CSharp::CharacterStats
+  characterName: New Character
+  portrait: {fileID: 0}
+  moveSpeed: 8
+  maxHealth: 250
+  healthRegen: 3
+  basePhysicalDamage: 15
+  baseMagicDamage: 0
+  attackRange: 1
+  attackSpeed: 1
+  armor: 0
+  magicResist: 0
+  critChance: 0
+  critMultiplier: 1.5
+  resourceMax: 100
+  resourceIsRage: 0
+  level: 1

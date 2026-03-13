@@ -1,19 +1,20 @@
 using UnityEngine;
 
-public class CameraFollow : MonoBehaviour
+public class SimpleCameraFollow : MonoBehaviour
 {
-    public Transform target; // Drag your Player into this slot in the Inspector
-    public Vector3 offset = new Vector3(0f, 10f, -10f);
-    public float smoothSpeed = 5f;
+    public Transform target;
+    public Vector3 offset = new Vector3(0f, 10f, -8f);
+    public float smoothTime = 0.12f;
+    Vector3 velocity;
 
     void LateUpdate()
     {
         if (target == null) return;
-
-        // Calculate the desired position based on the player's position + offset
-        Vector3 desiredPosition = target.position + offset;
-
-        // Smoothly transition to the new position
-        transform.position = Vector3.Lerp(transform.position, desiredPosition, smoothSpeed * Time.deltaTime);
+        Vector3 targetPos = target.position + offset;
+        transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref velocity, smoothTime);
+        transform.LookAt(target);
     }
+
+    // Optional helper so other code can set the target without needing direct field access
+    public void SetTarget(Transform t) => target = t;
 }

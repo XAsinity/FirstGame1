@@ -13,13 +13,19 @@ public class Character : MonoBehaviour
     [SerializeField] private float currentHealth;
     [SerializeField] private float currentResource;
 
+    [Header("Primary attack (melee) settings")]
+    public LayerMask meleeHitLayers = ~0; // configure to only hit enemies
+    public float meleeVerticalOffset = 1.0f; // raise ray origin so it hits chest/head height
+
     private Animator animator;
     private Dictionary<AbilityData, float> cooldownTimers = new Dictionary<AbilityData, float>();
+
+    // Pending ability fired by UseAbility; consumed by animation event OnAbilityHit or DoPendingAbility immediate fallback
+    private AbilityData pendingAbility;
 
     void Awake()
     {
         animator = GetComponentInChildren<Animator>();
-        // If Character was placed manually in scene without init, seed runtime from SO
         if (baseStats != null && currentHealth == 0f)
             ApplyStatsFromSO();
         SetupCooldowns();
@@ -28,24 +34,21 @@ public class Character : MonoBehaviour
     void Update()
     {
         float dt = Time.deltaTime;
-        // cooldowns
         var keys = new List<AbilityData>(cooldownTimers.Keys);
         foreach (var a in keys)
             cooldownTimers[a] = Mathf.Max(0f, cooldownTimers[a] - dt);
 
-        // resource regen
         if (baseStats != null)
             currentResource = Mathf.Min(baseStats.resourceMax, currentResource + baseStats.healthRegen * dt);
     }
 
     public void InitializeFromProfile(CharacterProfile profile)
     {
-        // assign references (read-only SO references are fine), then copy initial runtime values
         baseStats = profile.stats;
         abilities = new List<AbilityData>(profile.abilities);
-
         ApplyStatsFromSO();
         SetupCooldowns();
+        Debug.Log($"[Character] Initialized from profile '{(profile != null ? profile.displayName : "null")}'");
     }
 
     private void ApplyStatsFromSO()
@@ -73,33 +76,156 @@ public class Character : MonoBehaviour
 
     public void UseAbility(AbilityData ability)
     {
-        if (!CanUseAbility(ability)) return;
+        if (!CanUseAbility(ability))
+        {
+            Debug.Log($"[Character] Attempted to use ability '{(ability != null ? ability.abilityName : "null")}', but CanUseAbility returned false.");
+            return;
+        }
+
+        // consume resource and set cooldown
         if (baseStats != null) currentResource -= ability.resourceCost;
         cooldownTimers[ability] = ability.cooldown;
+
+        // set the pending ability so animation event knows what to apply
+        pendingAbility = ability;
+
+        // trigger the animation
         if (animator != null && !string.IsNullOrEmpty(ability.animatorTrigger))
+        {
             animator.SetTrigger(ability.animatorTrigger);
-        StartCoroutine(PerformAbilityRoutine(ability));
+            Debug.Log($"[Character] Animator trigger '{ability.animatorTrigger}' sent for ability '{ability.abilityName}'.");
+        }
+        else
+        {
+            Debug.Log($"[Character] No animator trigger for ability '{ability.abilityName}', applying immediately.");
+            StartCoroutine(ApplyPendingAbilityImmediate());
+        }
     }
 
-    private IEnumerator PerformAbilityRoutine(AbilityData ability)
+    private IEnumerator ApplyPendingAbilityImmediate()
     {
-        if (ability == null) yield break;
-        yield return new WaitForSeconds(0.15f);
-        Vector3 center = transform.position + transform.forward * ability.range;
-        if (ability.effectPrefab != null)
-            Instantiate(ability.effectPrefab, center, Quaternion.identity);
+        // wait one frame to allow any animation states to start (optional)
+        yield return null;
+        DoPendingAbility();
+    }
 
-        Collider[] hits = Physics.OverlapSphere(center, ability.radius);
+    // Animation Event should call this on the hit frame: name: OnAbilityHit
+    public void OnAbilityHit()
+    {
+        Debug.Log("[Character] OnAbilityHit animation event received.");
+        DoPendingAbility();
+    }
+
+    private void DoPendingAbility()
+    {
+        if (pendingAbility == null)
+        {
+            Debug.Log("[Character] DoPendingAbility called but no pending ability.");
+            return;
+        }
+
+        Vector3 center = transform.position + transform.forward * pendingAbility.range;
+        if (pendingAbility.effectPrefab != null)
+            Instantiate(pendingAbility.effectPrefab, center, Quaternion.identity);
+
+        Collider[] hits = Physics.OverlapSphere(center, pendingAbility.radius);
         foreach (var col in hits)
         {
             var enemy = col.GetComponentInParent<EnemyHealth>();
             if (enemy != null)
             {
-                float raw = ability.damage;
-                if (ability.scaleWithPhysical && baseStats != null) raw += baseStats.basePhysicalDamage * ability.scaleMultiplier;
-                float final = DamageCalculator.CalculateDamage(raw, ability.damageType, enemy.armor, enemy.magicResist, baseStats != null ? baseStats.critChance : 0f, baseStats != null ? baseStats.critMultiplier : 1f);
+                float raw = pendingAbility.damage;
+                if (pendingAbility.scaleWithPhysical && baseStats != null) raw += baseStats.basePhysicalDamage * pendingAbility.scaleMultiplier;
+
+                float final = DamageCalculator.CalculateDamage(
+                    raw,
+                    pendingAbility.damageType,
+                    enemy.armor,
+                    enemy.magicResist,
+                    baseStats != null ? baseStats.critChance : 0f,
+                    baseStats != null ? baseStats.critMultiplier : 1f
+                );
+
                 enemy.TakeDamage(final);
+                Debug.Log($"[Character] Ability '{pendingAbility.abilityName}' hit {enemy.name} for {final:F1} damage.");
             }
         }
+
+        pendingAbility = null;
+    }
+
+    // Primary attack (M1) — does an immediate forward raycast (useful for melee) and applies basePhysicalDamage
+    public void PrimaryAttack()
+    {
+        if (baseStats == null)
+        {
+            Debug.Log("[Character] PrimaryAttack aborted: baseStats missing.");
+            return;
+        }
+
+        float range = baseStats.attackRange;
+        float damage = baseStats.basePhysicalDamage;
+
+        // trigger attack animation if present
+        if (animator != null)
+        {
+            animator.SetTrigger("PrimaryAttack");
+        }
+
+        // Ray origin slightly above ground to better hit colliders
+        Vector3 origin = transform.position + Vector3.up * meleeVerticalOffset;
+        Vector3 dir = transform.forward;
+
+        RaycastHit hit;
+        if (Physics.Raycast(origin, dir, out hit, range, meleeHitLayers))
+        {
+            Debug.DrawLine(origin, hit.point, Color.green, 1.0f);
+            var enemy = hit.collider.GetComponentInParent<EnemyHealth>();
+            if (enemy != null)
+            {
+                float final = DamageCalculator.CalculateDamage(damage, DamageType.Physical, enemy.armor, enemy.magicResist,
+                    baseStats != null ? baseStats.critChance : 0f,
+                    baseStats != null ? baseStats.critMultiplier : 1f);
+                enemy.TakeDamage(final);
+                Debug.Log($"[Character] PrimaryAttack hit {enemy.name} -> {final:F1} damage.");
+            }
+            else
+            {
+                Debug.Log($"[Character] PrimaryAttack ray hit '{hit.collider.name}' but no EnemyHealth component found.");
+            }
+        }
+        else
+        {
+            Debug.DrawRay(origin, dir * range, Color.red, 0.7f);
+            Debug.Log("[Character] PrimaryAttack: no hit.");
+        }
+    }
+
+    // Debug visualization for ability ranges
+    private void OnDrawGizmosSelected()
+    {
+        if (abilities == null) return;
+        Gizmos.color = Color.red;
+        foreach (var a in abilities)
+        {
+            if (a == null) continue;
+            Vector3 center = transform.position + transform.forward * a.range;
+            Gizmos.DrawWireSphere(center, a.radius);
+        }
+
+        // draw primary attack ray
+        if (baseStats != null)
+        {
+            Gizmos.color = Color.yellow;
+            Vector3 o = transform.position + Vector3.up * meleeVerticalOffset;
+            Gizmos.DrawLine(o, o + transform.forward * baseStats.attackRange);
+        }
+    }
+
+    // Optional: get cooldown remaining for UI
+    public float GetCooldownRemaining(AbilityData ability)
+    {
+        if (ability == null || !cooldownTimers.ContainsKey(ability)) return 0f;
+        return cooldownTimers[ability];
     }
 }
