@@ -132,7 +132,7 @@ public class AnimatorDebugger : MonoBehaviour
             {
                 case AnimatorControllerParameterType.Float:
                     float f = animator.GetFloat(p.name);
-                    if (!lastFloat.ContainsKey(p.name) || !Mathf.Approximately(lastFloat[p.name], f))
+                    if (!lastFloat.ContainsKey(p.name) || Mathf.Abs(f - lastFloat[p.name]) > 0.01f)
                     {
                         Debug.LogFormat("[AnimatorDebugger] Param changed: {0} (Float) {1} -> {2}", p.name, lastFloat.GetValueOrDefault(p.name), f);
                         lastFloat[p.name] = f;

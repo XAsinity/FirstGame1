@@ -19,6 +19,13 @@ public class PlayerController : MonoBehaviour
     [Tooltip("Rotation smoothing time for facing the movement direction")]
     public float rotationSmoothTime = 0.08f;
 
+    [Header("Cursor Rotation")]
+    [Tooltip("When true the character always faces the mouse cursor (Diablo style). When false it faces the movement direction.")]
+    public bool lookAtCursor = true;
+
+    [Tooltip("Layer mask used for the cursor ground plane raycast. Set to the layer(s) your ground geometry uses.")]
+    public LayerMask cursorLayerMask = ~0;
+
     [Header("Animation (optional)")]
     [Tooltip("Assign the Animator from the model child, or leave empty to auto-find at Awake.")]
     [SerializeField] private Animator animator;
@@ -31,10 +38,17 @@ public class PlayerController : MonoBehaviour
     private CharacterController cc;
     private Vector3 velocity;
     private float turnSmoothVel;
+    private Camera mainCamera;
+
+    // Minimum squared look-direction magnitude to avoid snapping to zero
+    private const float LookDirSqrThreshold = 0.001f;
+    // Maximum raycast distance for cursor-to-world projection
+    private const float CursorRaycastDistance = 300f;
 
     void Awake()
     {
         cc = GetComponent<CharacterController>();
+        mainCamera = Camera.main;
 
         // Try to auto-find an Animator in children (works for prefab instances that already contain the model).
         if (animator == null)
@@ -61,7 +75,7 @@ public class PlayerController : MonoBehaviour
         Vector3 dir = new Vector3(h, 0f, v).normalized;
 
         Vector3 move = Vector3.zero;
-        Transform camT = Camera.main ? Camera.main.transform : null;
+        Transform camT = mainCamera ? mainCamera.transform : null;
 
         if (dir.magnitude >= 0.01f)
         {
@@ -76,10 +90,43 @@ public class PlayerController : MonoBehaviour
                 move = transform.TransformDirection(dir);
             }
 
-            // Smoothly rotate the capsule toward movement direction
-            float targetAngle = Mathf.Atan2(move.x, move.z) * Mathf.Rad2Deg;
-            float angle = Mathf.SmoothDampAngle(transform.eulerAngles.y, targetAngle, ref turnSmoothVel, rotationSmoothTime);
-            transform.rotation = Quaternion.Euler(0f, angle, 0f);
+            if (!lookAtCursor)
+            {
+                // Rotate toward movement direction when cursor aiming is off
+                float targetAngle = Mathf.Atan2(move.x, move.z) * Mathf.Rad2Deg;
+                float angle = Mathf.SmoothDampAngle(transform.eulerAngles.y, targetAngle, ref turnSmoothVel, rotationSmoothTime);
+                transform.rotation = Quaternion.Euler(0f, angle, 0f);
+            }
+        }
+
+        if (lookAtCursor)
+        {
+            // Rotate to face the mouse cursor using a horizontal plane at the player's feet
+            Camera cam = mainCamera;
+            if (cam != null)
+            {
+                Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+                // Use Physics.Raycast first (hits actual ground geometry)
+                if (Physics.Raycast(ray, out RaycastHit hit, CursorRaycastDistance, cursorLayerMask))
+                {
+                    Vector3 lookTarget = new Vector3(hit.point.x, transform.position.y, hit.point.z);
+                    Vector3 lookDir = lookTarget - transform.position;
+                    if (lookDir.sqrMagnitude > LookDirSqrThreshold)
+                        transform.rotation = Quaternion.LookRotation(lookDir);
+                }
+                else
+                {
+                    // Fallback: intersect ray with a flat plane at the player's height
+                    Plane groundPlane = new Plane(Vector3.up, transform.position);
+                    if (groundPlane.Raycast(ray, out float enter))
+                    {
+                        Vector3 worldPoint = ray.GetPoint(enter);
+                        Vector3 lookDir = new Vector3(worldPoint.x - transform.position.x, 0f, worldPoint.z - transform.position.z);
+                        if (lookDir.sqrMagnitude > LookDirSqrThreshold)
+                            transform.rotation = Quaternion.LookRotation(lookDir);
+                    }
+                }
+            }
         }
 
         // Gravity
