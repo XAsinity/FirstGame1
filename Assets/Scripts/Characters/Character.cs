@@ -1,8 +1,17 @@
-// name=Assets/Scripts/Character.cs
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// Core runtime character controller that manages abilities, primary attack, health, and resources.
+/// Initialized via <see cref="InitializeFromProfile"/> (called by PlayerManager) from a <see cref="CharacterProfile"/>.
+/// Abilities are triggered by <see cref="AbilityInput"/> and resolved through Unity animation events
+/// or immediately when no animation trigger is configured.
+/// Primary attack uses a SphereCast in the forward direction and respects a per-character cooldown
+/// defined in <see cref="CharacterStats.primaryAttackCooldown"/>.
+/// Damage calculations are delegated to <see cref="DamageCalculator"/>, which applies global base
+/// damage offsets, armor/magic-resist mitigation, and crit rolls.
+/// </summary>
 // NOTE: Removed RequireComponent(typeof(Animator)) so Animator can live on a child model.
 // Character will find an Animator on the same GameObject or in children (recommended pattern for model-child animators).
 public class Character : MonoBehaviour
@@ -27,6 +36,7 @@ public class Character : MonoBehaviour
     private Dictionary<AbilityData, float> cooldownTimers = new Dictionary<AbilityData, float>();
     private AbilityData pendingAbility;
     private readonly RaycastHit[] _meleeSphereBuffer = new RaycastHit[16];
+    private float primaryAttackTimer;
 
     void Awake()
     {
@@ -49,6 +59,9 @@ public class Character : MonoBehaviour
         var keys = new List<AbilityData>(cooldownTimers.Keys);
         foreach (var a in keys)
             cooldownTimers[a] = Mathf.Max(0f, cooldownTimers[a] - dt);
+
+        if (primaryAttackTimer > 0f)
+            primaryAttackTimer -= dt;
 
         if (baseStats != null)
             currentResource = Mathf.Min(baseStats.resourceMax, currentResource + baseStats.healthRegen * dt);
@@ -141,7 +154,10 @@ public class Character : MonoBehaviour
             if (enemy != null)
             {
                 float raw = pendingAbility.damage;
-                if (pendingAbility.scaleWithPhysical && baseStats != null) raw += baseStats.basePhysicalDamage * pendingAbility.scaleMultiplier;
+                if (pendingAbility.scaleWithPhysical && baseStats != null)
+                    raw += (DamageCalculator.GlobalPhysicalDamage + baseStats.basePhysicalDamage) * pendingAbility.scaleMultiplier;
+                else if (pendingAbility.damageType == DamageType.Magical && baseStats != null)
+                    raw += DamageCalculator.GlobalMagicDamage + baseStats.baseMagicDamage;
 
                 float final = DamageCalculator.CalculateDamage(
                     raw,
@@ -168,8 +184,16 @@ public class Character : MonoBehaviour
             return;
         }
 
+        if (primaryAttackTimer > 0f)
+        {
+            Debug.Log($"[Character] PrimaryAttack on cooldown ({primaryAttackTimer:F2}s remaining).");
+            return;
+        }
+
         float range = baseStats.attackRange;
-        float damage = baseStats.basePhysicalDamage;
+        float damage = DamageCalculator.GlobalPhysicalDamage + baseStats.basePhysicalDamage;
+
+        primaryAttackTimer = baseStats.primaryAttackCooldown;
 
         if (animator != null)
             animator.SetTrigger("PrimaryAttack");

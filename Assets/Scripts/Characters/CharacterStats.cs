@@ -1,5 +1,10 @@
 using UnityEngine;
 
+/// <summary>
+/// ScriptableObject that stores a character's base stats template.
+/// Create instances via: Right-click > Create > Game > CharacterStats.
+/// Do NOT modify these values at runtime — Character.cs works from runtime copies.
+/// </summary>
 [CreateAssetMenu(fileName = "NewCharacterStats", menuName = "Game/CharacterStats")]
 public class CharacterStats : ScriptableObject
 {
@@ -17,6 +22,7 @@ public class CharacterStats : ScriptableObject
     public float baseMagicDamage = 0f;
     public float attackRange = 1.5f;
     public float attackSpeed = 1f;
+    public float primaryAttackCooldown = 0.5f;
 
     [Header("Defenses")]
     public float armor = 0f;
