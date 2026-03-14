@@ -1,31 +1,41 @@
+// name=Assets/Scripts/Character.cs
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-[RequireComponent(typeof(Animator))]
+// NOTE: Removed RequireComponent(typeof(Animator)) so Animator can live on a child model.
+// Character will find an Animator on the same GameObject or in children (recommended pattern for model-child animators).
 public class Character : MonoBehaviour
 {
     [Header("Assigned at edit-time (optional)")]
     public CharacterStats baseStats; // reference to SO (template). We'll copy runtime values from this.
     public List<AbilityData> abilities = new List<AbilityData>();
 
+    [Header("Animator (optional) — will automatically find Animator in children if not assigned)")]
+    [Tooltip("If left empty, Character will search GetComponentInChildren<Animator>()")]
+    [SerializeField] private Animator animator;
+
     [Header("Runtime (do not edit the SOs directly!)")]
     [SerializeField] private float currentHealth;
     [SerializeField] private float currentResource;
 
     [Header("Primary attack (melee) settings")]
-    public LayerMask meleeHitLayers = ~0; // configure to only hit enemies
-    public float meleeVerticalOffset = 1.0f; // raise ray origin so it hits chest/head height
+    public LayerMask meleeHitLayers = ~0;
+    public float meleeVerticalOffset = 1.0f;
 
-    private Animator animator;
     private Dictionary<AbilityData, float> cooldownTimers = new Dictionary<AbilityData, float>();
-
-    // Pending ability fired by UseAbility; consumed by animation event OnAbilityHit or DoPendingAbility immediate fallback
     private AbilityData pendingAbility;
 
     void Awake()
     {
-        animator = GetComponentInChildren<Animator>();
+        // If the animator wasn't explicitly assigned in the Inspector, find it in children
+        if (animator == null)
+        {
+            animator = GetComponentInChildren<Animator>(true);
+            if (animator == null)
+                Debug.LogWarning($"Character ({name}) could not find an Animator on itself or children. Add an Animator to the visual child or assign one in Inspector.");
+        }
+
         if (baseStats != null && currentHealth == 0f)
             ApplyStatsFromSO();
         SetupCooldowns();
@@ -82,14 +92,10 @@ public class Character : MonoBehaviour
             return;
         }
 
-        // consume resource and set cooldown
         if (baseStats != null) currentResource -= ability.resourceCost;
         cooldownTimers[ability] = ability.cooldown;
-
-        // set the pending ability so animation event knows what to apply
         pendingAbility = ability;
 
-        // trigger the animation
         if (animator != null && !string.IsNullOrEmpty(ability.animatorTrigger))
         {
             animator.SetTrigger(ability.animatorTrigger);
@@ -104,12 +110,10 @@ public class Character : MonoBehaviour
 
     private IEnumerator ApplyPendingAbilityImmediate()
     {
-        // wait one frame to allow any animation states to start (optional)
         yield return null;
         DoPendingAbility();
     }
 
-    // Animation Event should call this on the hit frame: name: OnAbilityHit
     public void OnAbilityHit()
     {
         Debug.Log("[Character] OnAbilityHit animation event received.");
@@ -154,7 +158,6 @@ public class Character : MonoBehaviour
         pendingAbility = null;
     }
 
-    // Primary attack (M1) — does an immediate forward raycast (useful for melee) and applies basePhysicalDamage
     public void PrimaryAttack()
     {
         if (baseStats == null)
@@ -166,13 +169,9 @@ public class Character : MonoBehaviour
         float range = baseStats.attackRange;
         float damage = baseStats.basePhysicalDamage;
 
-        // trigger attack animation if present
         if (animator != null)
-        {
             animator.SetTrigger("PrimaryAttack");
-        }
 
-        // Ray origin slightly above ground to better hit colliders
         Vector3 origin = transform.position + Vector3.up * meleeVerticalOffset;
         Vector3 dir = transform.forward;
 
@@ -201,7 +200,6 @@ public class Character : MonoBehaviour
         }
     }
 
-    // Debug visualization for ability ranges
     private void OnDrawGizmosSelected()
     {
         if (abilities == null) return;
@@ -213,7 +211,6 @@ public class Character : MonoBehaviour
             Gizmos.DrawWireSphere(center, a.radius);
         }
 
-        // draw primary attack ray
         if (baseStats != null)
         {
             Gizmos.color = Color.yellow;
@@ -222,10 +219,15 @@ public class Character : MonoBehaviour
         }
     }
 
-    // Optional: get cooldown remaining for UI
     public float GetCooldownRemaining(AbilityData ability)
     {
         if (ability == null || !cooldownTimers.ContainsKey(ability)) return 0f;
         return cooldownTimers[ability];
+    }
+
+    // Expose animator assignment in case PlayerManager wants to set it explicitly
+    public void AssignAnimator(Animator a)
+    {
+        animator = a;
     }
 }

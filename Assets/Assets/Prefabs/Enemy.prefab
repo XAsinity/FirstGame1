@@ -128,7 +128,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 59e6d2eceec824448bd8173f73be598e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::EnemyAI
-  moveSpeed: 25
+  moveSpeed: 5
 --- !u!114 &6059624032609117307
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -141,4 +141,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 171760d8bbffef44b94b5a52f266762b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::EnemyHealth
-  health: 3
+  maxHealth: 10
+  health: 1
+  armor: 0
+  magicResist: 0

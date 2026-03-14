@@ -12,12 +12,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e603cd501868add4d9e9a52eadf87fa3, type: 3}
   m_Name: BarbarianProfile
   m_EditorClassIdentifier: Assembly-CSharp::CharacterProfile
-  characterPrefab: {fileID: 919132149155446097, guid: 1198606b8f179254ea2e979d74ae64a2, type: 3}
+  displayName: Barbarian
+  characterPrefab: {fileID: 2936319525257660486, guid: 022cb9d6c66be7940bac1ede607499d7, type: 3}
   stats: {fileID: 11400000, guid: ee7a3f1797063de48b04ff4fc6ee3cc2, type: 2}
   abilities:
   - {fileID: 11400000, guid: ad1259a949e152140adc095a00d62669, type: 2}
   - {fileID: 0}
   - {fileID: 0}
   - {fileID: 0}
-  portrait: {fileID: 0}
-  displayName: Barbarian
+  visualScale: {x: 3, y: 3, z: 3}
+  visualLocalOffset: {x: 0, y: 0, z: 0}
+  visualLocalEulerOffset: {x: 0, y: 0, z: 0}
+  overrideCapsuleSizing: 0
+  capsuleHeight: 2
+  capsuleRadius: 0.5
+  capsuleCenter: {x: 0, y: 1, z: 0}

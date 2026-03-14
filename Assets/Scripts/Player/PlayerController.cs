@@ -1,68 +1,160 @@
 using UnityEngine;
 
+/// <summary>
+/// PlayerController: simple movement + animator hookup helper.
+/// - Moves the CharacterController (basic WASD movement).
+/// - Auto-finds an Animator in children on Awake if one isn't assigned.
+/// - Exposes AssignAnimator(Animator) so PlayerManager can assign the visual's Animator at spawn time.
+/// - Exposes CurrentSpeed and Anim so other systems (MovementAnimatorBridge, PlayerManager) can read them.
+/// - Safely checks for Animator parameters before setting triggers to avoid "Parameter does not exist" errors.
+/// Replace or merge with your existing PlayerController implementation as needed.
+/// </summary>
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
 {
     [Header("Movement Settings")]
-    public float moveSpeed = 8f;
+    [Tooltip("Movement speed in world units per second")]
+    public float MoveSpeed = 25f;
 
-    [Header("Animation")]
-    [Tooltip("Drag the child 3D model that has the Animator component into this slot")]
-    public Animator anim;
+    [Tooltip("Rotation smoothing time for facing the movement direction")]
+    public float rotationSmoothTime = 0.08f;
 
-    private CharacterController controller;
-    private Camera mainCamera;
+    [Header("Animation (optional)")]
+    [Tooltip("Assign the Animator from the model child, or leave empty to auto-find at Awake.")]
+    [SerializeField] private Animator animator;
 
-    void Start()
+    // Exposed to other scripts
+    public Animator Anim => animator;
+    public float CurrentSpeed { get; private set; }
+
+    // Internal
+    private CharacterController cc;
+    private Vector3 velocity;
+    private float turnSmoothVel;
+
+    void Awake()
     {
-        // Automatically grab the components we need
-        controller = GetComponent<CharacterController>();
-        mainCamera = Camera.main;
+        cc = GetComponent<CharacterController>();
+
+        // Try to auto-find an Animator in children (works for prefab instances that already contain the model).
+        if (animator == null)
+        {
+            animator = GetComponentInChildren<Animator>(true);
+            if (animator != null)
+                Debug.Log($"PlayerController: Auto-found Animator on '{animator.gameObject.name}'.");
+            else
+                Debug.Log("PlayerController: No Animator assigned or found in children at Awake. PlayerManager can AssignAnimator at spawn.");
+        }
     }
 
     void Update()
     {
-        MovePlayer();
-        LookAtMouse();
+        HandleMovement();
+        UpdateAnimatorParams();
     }
 
-    void MovePlayer()
+    private void HandleMovement()
     {
-        // 1. Get input from WASD or Arrow Keys
-        float horizontal = Input.GetAxisRaw("Horizontal");
-        float vertical = Input.GetAxisRaw("Vertical");
+        // Basic input-driven movement (camera relative).
+        float h = Input.GetAxisRaw("Horizontal");
+        float v = Input.GetAxisRaw("Vertical");
+        Vector3 dir = new Vector3(h, 0f, v).normalized;
 
-        // 2. Calculate movement direction (normalized so diagonal movement isn't faster)
-        Vector3 moveDirection = new Vector3(horizontal, 0f, vertical).normalized;
+        Vector3 move = Vector3.zero;
+        Transform camT = Camera.main ? Camera.main.transform : null;
 
-        // 3. Move the character using the Character Controller
-        controller.Move(moveDirection * moveSpeed * Time.deltaTime);
-
-        // 4. Send the speed to the Animator so it knows when to transition to the Walk animation
-        if (anim != null)
+        if (dir.magnitude >= 0.01f)
         {
-            // moveDirection.magnitude will be 0 when standing still, and 1 when moving
-            anim.SetFloat("Speed", moveDirection.magnitude);
+            if (camT != null)
+            {
+                Vector3 camForward = Vector3.ProjectOnPlane(camT.forward, Vector3.up).normalized;
+                Vector3 camRight = Vector3.ProjectOnPlane(camT.right, Vector3.up).normalized;
+                move = (camForward * dir.z + camRight * dir.x).normalized;
+            }
+            else
+            {
+                move = transform.TransformDirection(dir);
+            }
+
+            // Smoothly rotate the capsule toward movement direction
+            float targetAngle = Mathf.Atan2(move.x, move.z) * Mathf.Rad2Deg;
+            float angle = Mathf.SmoothDampAngle(transform.eulerAngles.y, targetAngle, ref turnSmoothVel, rotationSmoothTime);
+            transform.rotation = Quaternion.Euler(0f, angle, 0f);
         }
+
+        // Gravity
+        if (!cc.isGrounded)
+            velocity.y += Physics.gravity.y * Time.deltaTime;
+        else if (velocity.y < 0f)
+            velocity.y = -1f;
+
+        Vector3 final = move * MoveSpeed;
+        final.y = velocity.y;
+        cc.Move(final * Time.deltaTime);
     }
 
-    void LookAtMouse()
+    private void UpdateAnimatorParams()
     {
-        // 1. Create a ray from the mouse position into the 3D world
-        Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
+        if (animator == null)
+            return;
 
-        // 2. Create a mathematical plane at the player's exact height (so aiming works on ramps!)
-        Plane groundPlane = new Plane(Vector3.up, transform.position);
-        float rayDistance;
+        Vector3 horizVel = new Vector3(cc.velocity.x, 0f, cc.velocity.z);
+        float speed = horizVel.magnitude;
+        CurrentSpeed = speed;
 
-        // 3. If the ray hits the plane, find that exact point
-        if (groundPlane.Raycast(ray, out rayDistance))
+        // Set 'Speed' float if it exists
+        if (HasAnimatorParameter("Speed", AnimatorControllerParameterType.Float))
+            animator.SetFloat("Speed", speed);
+
+        // Set 'IsMoving' bool if it exists
+        if (HasAnimatorParameter("IsMoving", AnimatorControllerParameterType.Bool))
+            animator.SetBool("IsMoving", speed > 0.05f);
+    }
+
+    /// <summary>
+    /// Assigns the runtime Animator instance (usually from the spawned visual prefab).
+    /// Call this from PlayerManager right after instantiating the visual so the capsule has a valid Animator reference.
+    /// </summary>
+    /// <param name="a">Animator instance found on the spawned visual</param>
+    public void AssignAnimator(Animator a)
+    {
+        if (a == null)
         {
-            Vector3 pointToLook = ray.GetPoint(rayDistance);
-
-            // 4. Look at the point (keeping the player perfectly upright)
-            Vector3 lookTarget = new Vector3(pointToLook.x, transform.position.y, pointToLook.z);
-            transform.LookAt(lookTarget);
+            Debug.LogWarning("PlayerController.AssignAnimator called with null.");
+            return;
         }
+
+        animator = a;
+        Debug.Log($"PlayerController: Animator assigned at runtime -> {animator.gameObject.name}");
+    }
+
+    /// <summary>
+    /// Safely trigger the PrimaryAttack trigger on the animator (only if the parameter exists).
+    /// </summary>
+    public void TriggerPrimaryAttack()
+    {
+        if (animator == null)
+        {
+            Debug.LogWarning("PlayerController.TriggerPrimaryAttack called but animator is null.");
+            return;
+        }
+
+        if (HasAnimatorParameter("PrimaryAttack", AnimatorControllerParameterType.Trigger))
+            animator.SetTrigger("PrimaryAttack");
+        else
+            Debug.LogWarning("PlayerController: Animator does not have trigger 'PrimaryAttack'. Add it to the PlayerAnimator or change the trigger name.");
+    }
+
+    /// <summary>
+    /// Helper to check if an animator parameter exists and matches the requested type.
+    /// </summary>
+    private bool HasAnimatorParameter(string paramName, AnimatorControllerParameterType type)
+    {
+        if (animator == null || string.IsNullOrEmpty(paramName)) return false;
+        foreach (var p in animator.parameters)
+        {
+            if (p.name == paramName && p.type == type) return true;
+        }
+        return false;
     }
 }
