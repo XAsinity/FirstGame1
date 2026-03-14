@@ -1,7 +1,18 @@
 using UnityEngine;
 
+/// <summary>
+/// Defines the damage type for an attack or ability.
+/// Physical: mitigated by target armor.
+/// Magical:  mitigated by target magic resist.
+/// True:     bypasses all mitigation.
+/// </summary>
 public enum DamageType { Physical, Magical, True }
 
+/// <summary>
+/// ScriptableObject template that defines a single ability (cooldown, cost, damage, area, VFX).
+/// Create instances via: Right-click > Create > Game > Ability.
+/// Assign to a <see cref="CharacterProfile"/> to make the ability available to a character.
+/// </summary>
 [CreateAssetMenu(fileName = "NewAbility", menuName = "Game/Ability")]
 public class AbilityData : ScriptableObject
 {

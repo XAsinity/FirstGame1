@@ -1,5 +1,10 @@
 using UnityEngine;
 
+/// <summary>
+/// Spawns enemy prefabs in a circle around the player at a configurable rate and radius.
+/// Enemies are placed on the ground plane at the player's Y position using <see cref="Random.insideUnitCircle"/>.
+/// Stops spawning automatically if the player reference is lost.
+/// </summary>
 public class EnemySpawner : MonoBehaviour
 {
     [Header("Spawner Settings")]

@@ -1,5 +1,10 @@
 using UnityEngine;
 
+/// <summary>
+/// Simple enemy AI that finds the player by tag on spawn and moves toward them each frame.
+/// Uses <see cref="Vector3.MoveTowards"/> for movement and <see cref="Transform.LookAt"/> for rotation.
+/// Attach to any enemy prefab that should chase the player.
+/// </summary>
 public class EnemyAI : MonoBehaviour
 {
     [Header("Enemy Stats")]

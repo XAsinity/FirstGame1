@@ -1,8 +1,12 @@
 using UnityEngine;
 
-/// Routes ability hotkeys (1-4) and Primary Attack (mouse left) to PlayerManager.CurrentCharacter.
-/// Safe: does nothing if no character selected or PlayerManager.InputEnabled is false.
-/// Adds console logs so you can see when keys are pressed and what the system attempted.
+/// <summary>
+/// Routes player input to the active character's ability and attack system.
+/// Hotkeys: Mouse Left = Primary Attack, 1-4 = Ability slots 0-3.
+/// Safe: does nothing if no character is selected or if <see cref="PlayerManager.InputEnabled"/> is false.
+/// Logs all key presses and outcomes to the Unity Console for easy debugging.
+/// Attach this component to the same GameObject as <see cref="PlayerManager"/> (or any persistent object in the scene).
+/// </summary>
 [DisallowMultipleComponent]
 public class AbilityInput : MonoBehaviour
 {

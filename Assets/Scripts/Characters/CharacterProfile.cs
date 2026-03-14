@@ -1,5 +1,13 @@
 using UnityEngine;
 
+/// <summary>
+/// ScriptableObject that bundles together everything needed to represent a playable character:
+/// a visual prefab, a <see cref="CharacterStats"/> asset, and an array of <see cref="AbilityData"/> assets.
+/// <see cref="PlayerManager"/> reads this profile to spawn and initialise the character at runtime.
+/// Visual placement overrides (scale, offset, rotation) allow artists to fine-tune without code changes.
+/// Optional capsule sizing hints let the physics capsule match each character's proportions.
+/// Create instances via: Right-click > Create > Game > CharacterProfile.
+/// </summary>
 [CreateAssetMenu(fileName = "NewCharacterProfile", menuName = "Game/CharacterProfile")]
 public class CharacterProfile : ScriptableObject
 {
