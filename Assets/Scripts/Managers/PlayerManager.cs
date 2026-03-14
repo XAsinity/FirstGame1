@@ -142,8 +142,8 @@ public class PlayerManager : MonoBehaviour
         var rb = go.GetComponent<Rigidbody>();
         if (rb != null) Destroy(rb);
 
-        // If the profile requests capsule sizing override, adjust CharacterController or CapsuleCollider on spawnPoint
-        if (spawnPoint != null && profile != null && profile.overrideCapsuleSizing)
+        // Always apply capsule sizing from the profile to ensure the physics capsule matches each character's proportions
+        if (spawnPoint != null && profile != null)
         {
             var charCtrl = spawnPoint.GetComponent<CharacterController>();
             if (charCtrl != null)
@@ -202,24 +202,35 @@ public class PlayerManager : MonoBehaviour
         //  - Character (if it has AssignAnimator method or 'animator' field)
         //  - PlayerController on spawnPoint (AssignAnimator method or 'animator' field)
         //  - MovementAnimatorBridge on spawnPoint (field or AssignAnimator)
+        PlayerController pc = spawnPoint != null ? spawnPoint.GetComponent<PlayerController>() : null;
+        MovementAnimatorBridge bridge = spawnPoint != null ? spawnPoint.GetComponent<MovementAnimatorBridge>() : null;
+
         if (visualAnimator != null)
         {
             // Character: prefer AssignAnimator method then try to set a field named 'animator'
             TryAssignAnimatorToComponent(ch, visualAnimator);
 
-            if (spawnPoint != null)
-            {
-                var pc = spawnPoint.GetComponent<PlayerController>();
-                if (pc != null)
-                {
-                    TryAssignAnimatorToComponent(pc, visualAnimator);
-                }
+            if (pc != null)
+                TryAssignAnimatorToComponent(pc, visualAnimator);
 
-                var bridge = spawnPoint.GetComponent<MovementAnimatorBridge>();
-                if (bridge != null)
-                {
-                    TryAssignAnimatorToComponent(bridge, visualAnimator);
-                }
+            if (bridge != null)
+                TryAssignAnimatorToComponent(bridge, visualAnimator);
+        }
+
+        // Sync move speed from profile stats into PlayerController and MovementAnimatorBridge so
+        // each character feels appropriately fast/slow without manually editing the capsule components.
+        if (profile != null && profile.stats != null)
+        {
+            if (pc != null)
+            {
+                pc.MoveSpeed = profile.stats.moveSpeed;
+                Debug.Log($"PlayerManager: Set PlayerController.MoveSpeed = {profile.stats.moveSpeed} from profile '{profile.displayName}'.");
+            }
+
+            if (bridge != null)
+            {
+                bridge.moveSpeed = profile.stats.moveSpeed;
+                Debug.Log($"PlayerManager: Set MovementAnimatorBridge.moveSpeed = {profile.stats.moveSpeed} from profile '{profile.displayName}'.");
             }
         }
 
