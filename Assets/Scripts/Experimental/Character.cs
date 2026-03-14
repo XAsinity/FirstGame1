@@ -22,9 +22,11 @@ public class Character : MonoBehaviour
     [Header("Primary attack (melee) settings")]
     public LayerMask meleeHitLayers = ~0;
     public float meleeVerticalOffset = 1.0f;
+    public float meleeRadius = 0.5f;
 
     private Dictionary<AbilityData, float> cooldownTimers = new Dictionary<AbilityData, float>();
     private AbilityData pendingAbility;
+    private readonly RaycastHit[] _meleeSphereBuffer = new RaycastHit[16];
 
     void Awake()
     {
@@ -175,28 +177,36 @@ public class Character : MonoBehaviour
         Vector3 origin = transform.position + Vector3.up * meleeVerticalOffset;
         Vector3 dir = transform.forward;
 
-        RaycastHit hit;
-        if (Physics.Raycast(origin, dir, out hit, range, meleeHitLayers))
+        RaycastHit[] hits = _meleeSphereBuffer;
+        int hitCount = Physics.SphereCastNonAlloc(origin, meleeRadius, dir, hits, range, meleeHitLayers);
+        bool hitEnemy = false;
+        for (int i = 0; i < hitCount; i++)
         {
-            Debug.DrawLine(origin, hit.point, Color.green, 1.0f);
+            var hit = hits[i];
+            if (hit.collider.transform.root == transform.root)
+            {
+                Debug.Log($"[Character] PrimaryAttack SphereCast hit own collider '{hit.collider.name}' — ignoring.");
+                continue;
+            }
+
             var enemy = hit.collider.GetComponentInParent<EnemyHealth>();
             if (enemy != null)
             {
+                Debug.DrawLine(origin, hit.point, Color.green, 1.0f);
                 float final = DamageCalculator.CalculateDamage(damage, DamageType.Physical, enemy.armor, enemy.magicResist,
                     baseStats != null ? baseStats.critChance : 0f,
                     baseStats != null ? baseStats.critMultiplier : 1f);
                 enemy.TakeDamage(final);
                 Debug.Log($"[Character] PrimaryAttack hit {enemy.name} -> {final:F1} damage.");
-            }
-            else
-            {
-                Debug.Log($"[Character] PrimaryAttack ray hit '{hit.collider.name}' but no EnemyHealth component found.");
+                hitEnemy = true;
+                break;
             }
         }
-        else
+
+        if (!hitEnemy)
         {
             Debug.DrawRay(origin, dir * range, Color.red, 0.7f);
-            Debug.Log("[Character] PrimaryAttack: no hit.");
+            Debug.Log("[Character] PrimaryAttack: no enemy hit.");
         }
     }
 
@@ -215,6 +225,8 @@ public class Character : MonoBehaviour
         {
             Gizmos.color = Color.yellow;
             Vector3 o = transform.position + Vector3.up * meleeVerticalOffset;
+            Gizmos.DrawWireSphere(o, meleeRadius);
+            Gizmos.DrawWireSphere(o + transform.forward * baseStats.attackRange, meleeRadius);
             Gizmos.DrawLine(o, o + transform.forward * baseStats.attackRange);
         }
     }
