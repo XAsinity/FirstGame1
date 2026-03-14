@@ -33,6 +33,10 @@ public class PlayerManager : MonoBehaviour
     [Tooltip("Optional: camera follow component (assign Main Camera follow script here)")]
     public MonoBehaviour cameraFollowComponent;
 
+    [Header("Combat")]
+    [Tooltip("Global combat settings asset. Assign in the Inspector to override default damage values at startup.")]
+    public GlobalCombatSettings globalCombatSettings;
+
     // Stored capsule values so they can be restored on UnselectCharacter
     private bool capsuleHadCharacterController = false;
     private float prevCapsuleHeight;
@@ -49,6 +53,10 @@ public class PlayerManager : MonoBehaviour
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         DontDestroyOnLoad(gameObject);
+
+        // Apply global combat settings so DamageCalculator uses the configured base damage values.
+        if (globalCombatSettings)
+            globalCombatSettings.Apply();
     }
 
     void Start()
