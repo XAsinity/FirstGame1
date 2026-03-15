@@ -37,17 +37,6 @@ public class PlayerManager : MonoBehaviour
     [Tooltip("Global combat settings asset. Assign in the Inspector to override default damage values at startup.")]
     public GlobalCombatSettings globalCombatSettings;
 
-    // Stored capsule values so they can be restored on UnselectCharacter
-    private bool capsuleHadCharacterController = false;
-    private float prevCapsuleHeight;
-    private float prevCapsuleRadius;
-    private Vector3 prevCapsuleCenter;
-
-    private bool capsuleHadCollider = false;
-    private float prevColliderHeight;
-    private float prevColliderRadius;
-    private Vector3 prevColliderCenter;
-
     void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
@@ -149,38 +138,6 @@ public class PlayerManager : MonoBehaviour
         if (ccOnVisual != null) Destroy(ccOnVisual);
         var rb = go.GetComponent<Rigidbody>();
         if (rb != null) Destroy(rb);
-
-        // Always apply capsule sizing from the profile to ensure the physics capsule matches each character's proportions
-        if (spawnPoint != null && profile != null)
-        {
-            var charCtrl = spawnPoint.GetComponent<CharacterController>();
-            if (charCtrl != null)
-            {
-                capsuleHadCharacterController = true;
-                prevCapsuleHeight = charCtrl.height;
-                prevCapsuleRadius = charCtrl.radius;
-                prevCapsuleCenter = charCtrl.center;
-
-                charCtrl.height = profile.capsuleHeight;
-                charCtrl.radius = profile.capsuleRadius;
-                charCtrl.center = profile.capsuleCenter;
-            }
-            else
-            {
-                var cap = spawnPoint.GetComponent<CapsuleCollider>();
-                if (cap != null)
-                {
-                    capsuleHadCollider = true;
-                    prevColliderHeight = cap.height;
-                    prevColliderRadius = cap.radius;
-                    prevColliderCenter = cap.center;
-
-                    cap.height = profile.capsuleHeight;
-                    cap.radius = profile.capsuleRadius;
-                    cap.center = profile.capsuleCenter;
-                }
-            }
-        }
 
         // Find Character component (root or children)
         Character ch = go.GetComponent<Character>() ?? go.GetComponentInChildren<Character>(true);
@@ -347,39 +304,12 @@ public class PlayerManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Destroys the current character and restores any capsule sizing we modified.
+    /// Destroys the current character.
     /// </summary>
     public void UnselectCharacter()
     {
         if (CurrentCharacter != null)
             Destroy(CurrentCharacter.gameObject);
-
-        // restore capsule values if we changed them
-        if (spawnPoint != null)
-        {
-            if (capsuleHadCharacterController)
-            {
-                var charCtrl = spawnPoint.GetComponent<CharacterController>();
-                if (charCtrl != null)
-                {
-                    charCtrl.height = prevCapsuleHeight;
-                    charCtrl.radius = prevCapsuleRadius;
-                    charCtrl.center = prevCapsuleCenter;
-                }
-                capsuleHadCharacterController = false;
-            }
-            if (capsuleHadCollider)
-            {
-                var cap = spawnPoint.GetComponent<CapsuleCollider>();
-                if (cap != null)
-                {
-                    cap.height = prevColliderHeight;
-                    cap.radius = prevColliderRadius;
-                    cap.center = prevColliderCenter;
-                }
-                capsuleHadCollider = false;
-            }
-        }
 
         CurrentCharacter = null;
         InputEnabled = false;
