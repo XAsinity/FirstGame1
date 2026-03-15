@@ -9,8 +9,10 @@ using UnityEngine;
 /// or immediately when no animation trigger is configured.
 /// Primary attack uses a SphereCast in the forward direction and respects a per-character cooldown
 /// defined in <see cref="CharacterStats.primaryAttackCooldown"/>.
-/// Damage calculations are delegated to <see cref="DamageCalculator"/>, which applies global base
+/// Damage calculations are delegated to <see cref="DamageSystem"/>, which applies global base
 /// damage offsets, armor/magic-resist mitigation, and crit rolls.
+/// All melee origins, radii, and ability areas are scaled by the GameObject's lossy scale so that
+/// physics checks and editor gizmos match when the visual model is scaled up.
 /// </summary>
 // NOTE: Removed RequireComponent(typeof(Animator)) so Animator can live on a child model.
 // Character will find an Animator on the same GameObject or in children (recommended pattern for model-child animators).
@@ -37,6 +39,14 @@ public class Character : MonoBehaviour
     private AbilityData pendingAbility;
     private readonly RaycastHit[] _meleeSphereBuffer = new RaycastHit[16];
     private float primaryAttackTimer;
+
+    /// <summary>
+    /// Average world-space scale of this GameObject.
+    /// Multiply inspector-unit distances/radii by this value so physics checks and
+    /// gizmos always match the visually scaled model.
+    /// </summary>
+    private float VisualScale =>
+        (transform.lossyScale.x + transform.lossyScale.y + transform.lossyScale.z) / 3f;
 
     void Awake()
     {
@@ -143,33 +153,50 @@ public class Character : MonoBehaviour
             return;
         }
 
-        Vector3 center = transform.position + transform.forward * pendingAbility.range;
+        // Scale the ability area by the model's visual scale so radii/ranges match the scaled character.
+        float visualScale = VisualScale;
+        Vector3 center = transform.position
+            + Vector3.up * (meleeVerticalOffset * visualScale)
+            + transform.forward * (pendingAbility.range * visualScale);
+        float scaledRadius = pendingAbility.radius * visualScale;
+
         if (pendingAbility.effectPrefab != null)
             Instantiate(pendingAbility.effectPrefab, center, Quaternion.identity);
 
-        Collider[] hits = Physics.OverlapSphere(center, pendingAbility.radius);
+        Collider[] hits = Physics.OverlapSphere(center, scaledRadius);
         foreach (var col in hits)
         {
+            if (col.transform.root == transform.root)
+                continue;
+
             var enemy = col.GetComponentInParent<EnemyHealth>();
             if (enemy != null)
             {
-                float raw = pendingAbility.damage;
-                if (pendingAbility.scaleWithPhysical && baseStats != null)
-                    raw += (DamageCalculator.GlobalPhysicalDamage + baseStats.basePhysicalDamage) * pendingAbility.scaleMultiplier;
-                else if (pendingAbility.damageType == DamageType.Magical && baseStats != null)
-                    raw += DamageCalculator.GlobalMagicDamage + baseStats.baseMagicDamage;
+                bool isCrit = pendingAbility.allowCrit && baseStats != null
+                    ? DamageSystem.RollCrit(baseStats.critChance)
+                    : false;
 
-                float final = DamageCalculator.CalculateDamage(
-                    raw,
-                    pendingAbility.damageType,
+                var info = new DamageInfo
+                {
+                    type              = pendingAbility.damageType,
+                    baseDamage        = pendingAbility.baseDamage,
+                    scaleWithPhysical = pendingAbility.scaleWithPhysical,
+                    scaleMultiplier   = pendingAbility.scaleMultiplier,
+                    allowCrit         = pendingAbility.allowCrit,
+                    isCrit            = isCrit,
+                    critMultiplier    = pendingAbility.critMultiplier,
+                };
+
+                float final = DamageSystem.CalculateDamage(
+                    info,
+                    baseStats != null ? baseStats.basePhysicalDamage : 0f,
+                    baseStats != null ? baseStats.baseMagicDamage : 0f,
                     enemy.armor,
-                    enemy.magicResist,
-                    baseStats != null ? baseStats.critChance : 0f,
-                    baseStats != null ? baseStats.critMultiplier : 1f
+                    enemy.magicResist
                 );
 
                 enemy.TakeDamage(final);
-                Debug.Log($"[Character] Ability '{pendingAbility.abilityName}' hit {enemy.name} for {final:F1} damage.");
+                Debug.Log($"[Character] Ability '{pendingAbility.abilityName}' hit {enemy.name} for {final:F1} damage{(isCrit ? " (CRIT)" : "")}.");
             }
         }
 
@@ -190,19 +217,21 @@ public class Character : MonoBehaviour
             return;
         }
 
-        float range = baseStats.attackRange;
-        float damage = DamageCalculator.GlobalPhysicalDamage + baseStats.basePhysicalDamage;
+        // Scale the melee sweep by the model's visual scale so physics matches the visible character.
+        float visualScale = VisualScale;
+        float range        = baseStats.attackRange  * visualScale;
+        float scaledRadius = meleeRadius            * visualScale;
 
         primaryAttackTimer = baseStats.primaryAttackCooldown;
 
         if (animator != null)
             animator.SetTrigger("PrimaryAttack");
 
-        Vector3 origin = transform.position + Vector3.up * meleeVerticalOffset;
-        Vector3 dir = transform.forward;
+        Vector3 origin = transform.position + Vector3.up * (meleeVerticalOffset * visualScale);
+        Vector3 dir    = transform.forward;
 
         RaycastHit[] hits = _meleeSphereBuffer;
-        int hitCount = Physics.SphereCastNonAlloc(origin, meleeRadius, dir, hits, range, meleeHitLayers);
+        int hitCount = Physics.SphereCastNonAlloc(origin, scaledRadius, dir, hits, range, meleeHitLayers);
         bool hitEnemy = false;
         for (int i = 0; i < hitCount; i++)
         {
@@ -217,11 +246,32 @@ public class Character : MonoBehaviour
             if (enemy != null)
             {
                 Debug.DrawLine(origin, hit.point, Color.green, 1.0f);
-                float final = DamageCalculator.CalculateDamage(damage, DamageType.Physical, enemy.armor, enemy.magicResist,
-                    baseStats != null ? baseStats.critChance : 0f,
-                    baseStats != null ? baseStats.critMultiplier : 1f);
+
+                bool isCrit = DamageSystem.RollCrit(baseStats.critChance);
+                // baseDamage is 0 here because the full damage contribution comes from the
+                // global offset + character base (applied automatically when scaleWithPhysical = true).
+                // Formula: (DamageSystem.GlobalPhysicalDamage + baseStats.basePhysicalDamage) * scaleMultiplier
+                var info = new DamageInfo
+                {
+                    type              = DamageType.Physical,
+                    baseDamage        = 0f,
+                    scaleWithPhysical = true,
+                    scaleMultiplier   = 1f,
+                    allowCrit         = true,
+                    isCrit            = isCrit,
+                    critMultiplier    = baseStats.critMultiplier,
+                };
+
+                float final = DamageSystem.CalculateDamage(
+                    info,
+                    baseStats.basePhysicalDamage,
+                    baseStats.baseMagicDamage,
+                    enemy.armor,
+                    enemy.magicResist
+                );
+
                 enemy.TakeDamage(final);
-                Debug.Log($"[Character] PrimaryAttack hit {enemy.name} -> {final:F1} damage.");
+                Debug.Log($"[Character] PrimaryAttack hit {enemy.name} -> {final:F1} damage{(isCrit ? " (CRIT)" : "")}.");
                 hitEnemy = true;
                 break;
             }
@@ -236,22 +286,33 @@ public class Character : MonoBehaviour
 
     private void OnDrawGizmosSelected()
     {
-        if (abilities == null) return;
-        Gizmos.color = Color.red;
-        foreach (var a in abilities)
+        // Use the average lossy scale so gizmos respect the visual model's scale in the Scene view.
+        float visualScale = VisualScale;
+
+        // Ability area gizmos (red)
+        if (abilities != null)
         {
-            if (a == null) continue;
-            Vector3 center = transform.position + transform.forward * a.range;
-            Gizmos.DrawWireSphere(center, a.radius);
+            Gizmos.color = Color.red;
+            foreach (var a in abilities)
+            {
+                if (a == null) continue;
+                Vector3 center = transform.position
+                    + Vector3.up * (meleeVerticalOffset * visualScale)
+                    + transform.forward * (a.range * visualScale);
+                Gizmos.DrawWireSphere(center, a.radius * visualScale);
+            }
         }
 
+        // Primary-attack melee sweep gizmos (yellow)
         if (baseStats != null)
         {
             Gizmos.color = Color.yellow;
-            Vector3 o = transform.position + Vector3.up * meleeVerticalOffset;
-            Gizmos.DrawWireSphere(o, meleeRadius);
-            Gizmos.DrawWireSphere(o + transform.forward * baseStats.attackRange, meleeRadius);
-            Gizmos.DrawLine(o, o + transform.forward * baseStats.attackRange);
+            Vector3 o     = transform.position + Vector3.up * (meleeVerticalOffset * visualScale);
+            float radius  = meleeRadius * visualScale;
+            float range   = baseStats.attackRange * visualScale;
+            Gizmos.DrawWireSphere(o, radius);
+            Gizmos.DrawWireSphere(o + transform.forward * range, radius);
+            Gizmos.DrawLine(o, o + transform.forward * range);
         }
     }
 

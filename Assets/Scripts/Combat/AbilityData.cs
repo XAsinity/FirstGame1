@@ -1,15 +1,10 @@
 using UnityEngine;
 
-/// <summary>
-/// Defines the damage type for an attack or ability.
-/// Physical: mitigated by target armor.
-/// Magical:  mitigated by target magic resist.
-/// True:     bypasses all mitigation.
-/// </summary>
-public enum DamageType { Physical, Magical, True }
+// DamageType enum is defined in DamageSystem.cs and shared across all combat scripts.
 
 /// <summary>
 /// ScriptableObject template that defines a single ability (cooldown, cost, damage, area, VFX).
+/// Damage type and scaling reference <see cref="DamageType"/> from <see cref="DamageSystem"/>.
 /// Create instances via: Right-click > Create > Game > Ability.
 /// Assign to a <see cref="CharacterProfile"/> to make the ability available to a character.
 /// </summary>
@@ -26,9 +21,13 @@ public class AbilityData : ScriptableObject
 
     [Header("Damage")]
     public DamageType damageType = DamageType.Physical;
-    public float damage = 10f;
+    public float baseDamage = 10f;
     public bool scaleWithPhysical = true;
     public float scaleMultiplier = 1f;
+
+    [Header("Crit")]
+    public bool allowCrit = true;
+    public float critMultiplier = 1.5f;
 
     [Header("Area / Range")]
     public float radius = 2f;
@@ -40,4 +39,11 @@ public class AbilityData : ScriptableObject
 
     [Header("Flags")]
     public bool isUltimate = false;
+
+    // ---------------------------------------------------------------------------
+    // Legacy property: old code referenced "damage"; redirect to baseDamage.
+    // Remove once all call-sites are updated to baseDamage.
+    // ---------------------------------------------------------------------------
+    [System.Obsolete("Use baseDamage instead. This compatibility shim will be removed in a future update.")]
+    public float damage => baseDamage;
 }
