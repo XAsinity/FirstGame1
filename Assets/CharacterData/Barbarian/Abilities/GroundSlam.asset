@@ -16,7 +16,7 @@ MonoBehaviour:
   description: Ground Slam that sends a wave of rubble Stunning and dealing 20 base
     damage
   icon: {fileID: 0}
-  cooldown: 45
+  cooldown: 15
   resourceCost: 0
   damageType: 0
   damage: 20

@@ -17,10 +17,11 @@ MonoBehaviour:
   moveSpeed: 8
   maxHealth: 250
   healthRegen: 3
-  basePhysicalDamage: 15
+  basePhysicalDamage: 5
   baseMagicDamage: 0
   attackRange: 1
   attackSpeed: 1
+  primaryAttackCooldown: 1
   armor: 0
   magicResist: 0
   critChance: 0
