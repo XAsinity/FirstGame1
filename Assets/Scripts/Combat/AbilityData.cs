@@ -1,17 +1,12 @@
 using UnityEngine;
 
 /// <summary>
-/// Defines the damage type for an attack or ability.
-/// Physical: mitigated by target armor.
-/// Magical:  mitigated by target magic resist.
-/// True:     bypasses all mitigation.
-/// </summary>
-public enum DamageType { Physical, Magical, True }
-
-/// <summary>
 /// ScriptableObject template that defines a single ability (cooldown, cost, damage, area, VFX).
 /// Create instances via: Right-click > Create > Game > Ability.
 /// Assign to a <see cref="CharacterProfile"/> to make the ability available to a character.
+///
+/// Damage type is now defined by <see cref="DamageType"/> in <see cref="DamageSystem"/>.
+/// Damage calculations are performed via <see cref="DamageSystem.CalculateDamage"/>.
 /// </summary>
 [CreateAssetMenu(fileName = "NewAbility", menuName = "Game/Ability")]
 public class AbilityData : ScriptableObject
@@ -29,6 +24,10 @@ public class AbilityData : ScriptableObject
     public float damage = 10f;
     public bool scaleWithPhysical = true;
     public float scaleMultiplier = 1f;
+    [Tooltip("Whether this ability can critically strike.")]
+    public bool allowCrit = true;
+    [Tooltip("Ability-specific crit multiplier combined with the attacker's crit multiplier. Leave at 1 to use only the attacker's value.")]
+    public float critMultiplier = 1f;
 
     [Header("Area / Range")]
     public float radius = 2f;
