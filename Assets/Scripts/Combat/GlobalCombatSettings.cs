@@ -4,8 +4,8 @@ using UnityEngine;
 /// ScriptableObject that stores global combat settings shared across all characters.
 /// These values are applied on top of per-character stats in every damage calculation.
 /// Create an instance via: Right-click > Create > Game > GlobalCombatSettings.
-/// Assign the asset to <see cref="DamageCalculator"/> at runtime (e.g. from a GameManager or
-/// initialization script) to override the static defaults in <see cref="DamageCalculator"/>.
+/// Assign the asset to <see cref="DamageSystem"/> at runtime (e.g. from a GameManager or
+/// initialization script) to override the static defaults in <see cref="DamageSystem"/>.
 /// </summary>
 [CreateAssetMenu(fileName = "GlobalCombatSettings", menuName = "Game/GlobalCombatSettings")]
 public class GlobalCombatSettings : ScriptableObject
@@ -18,13 +18,14 @@ public class GlobalCombatSettings : ScriptableObject
     public float globalBaseMagicDamage = 5f;
 
     /// <summary>
-    /// Applies these settings to the static fields on <see cref="DamageCalculator"/> so all
-    /// damage calls in the game reflect the values set in this asset.
+    /// Applies these settings to <see cref="DamageSystem"/> (and the backward-compat
+    /// <see cref="DamageCalculator"/> wrapper) so all damage calls reflect the values set in this asset.
     /// Call this once at game start (e.g. from a GameManager or PlayerManager).
     /// </summary>
     public void Apply()
     {
-        DamageCalculator.GlobalPhysicalDamage = globalBasePhysicalDamage;
-        DamageCalculator.GlobalMagicDamage    = globalBaseMagicDamage;
+        // DamageSystem is the single source of truth; DamageCalculator proxies to it.
+        DamageSystem.GlobalPhysicalDamage = globalBasePhysicalDamage;
+        DamageSystem.GlobalMagicDamage    = globalBaseMagicDamage;
     }
 }
