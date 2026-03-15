@@ -3,6 +3,11 @@ using UnityEngine;
 // DamageType enum is defined in DamageSystem.cs and shared across all combat scripts.
 
 /// <summary>
+/// Defines the shape of the hit detection area for an ability.
+/// </summary>
+public enum AbilityShape { Sphere, Cone }
+
+/// <summary>
 /// ScriptableObject template that defines a single ability (cooldown, cost, damage, area, VFX).
 /// Damage type and scaling reference <see cref="DamageType"/> from <see cref="DamageSystem"/>.
 /// Create instances via: Right-click > Create > Game > Ability.
@@ -32,6 +37,13 @@ public class AbilityData : ScriptableObject
     [Header("Area / Range")]
     public float radius = 2f;
     public float range = 1f;
+
+    [Header("Shape")]
+    public AbilityShape shape = AbilityShape.Sphere;
+
+    [Tooltip("Half-angle of the cone in degrees (only used when shape = Cone)")]
+    [Range(10f, 90f)]
+    public float coneHalfAngle = 40f;
 
     [Header("VFX / Animation")]
     public string animatorTrigger; // exact trigger name in Animator

@@ -155,52 +155,88 @@ public class Character : MonoBehaviour
 
         // Scale the ability area by the model's visual scale so radii/ranges match the scaled character.
         float visualScale = VisualScale;
-        Vector3 center = transform.position
-            + Vector3.up * (meleeVerticalOffset * visualScale)
-            + transform.forward * (pendingAbility.range * visualScale);
-        float scaledRadius = pendingAbility.radius * visualScale;
 
-        if (pendingAbility.effectPrefab != null)
-            Instantiate(pendingAbility.effectPrefab, center, Quaternion.identity);
-
-        Collider[] hits = Physics.OverlapSphere(center, scaledRadius);
-        foreach (var col in hits)
+        if (pendingAbility.shape == AbilityShape.Cone)
         {
-            if (col.transform.root == transform.root)
-                continue;
+            // Cone: OverlapSphere centered on the player using range as the cone reach,
+            // then filter by angle to create a pizza-slice/cone area in front.
+            Vector3 origin = transform.position + Vector3.up * (meleeVerticalOffset * visualScale);
+            float coneReach = pendingAbility.range * visualScale;
 
-            var enemy = col.GetComponentInParent<EnemyHealth>();
-            if (enemy != null)
+            if (pendingAbility.effectPrefab != null)
+                Instantiate(pendingAbility.effectPrefab, transform.position, transform.rotation);
+
+            Collider[] hits = Physics.OverlapSphere(origin, coneReach);
+            foreach (var col in hits)
             {
-                bool isCrit = pendingAbility.allowCrit && baseStats != null
-                    ? DamageSystem.RollCrit(baseStats.critChance)
-                    : false;
+                if (col.transform.root == transform.root)
+                    continue;
 
-                var info = new DamageInfo
-                {
-                    type              = pendingAbility.damageType,
-                    baseDamage        = pendingAbility.baseDamage,
-                    scaleWithPhysical = pendingAbility.scaleWithPhysical,
-                    scaleMultiplier   = pendingAbility.scaleMultiplier,
-                    allowCrit         = pendingAbility.allowCrit,
-                    isCrit            = isCrit,
-                    critMultiplier    = pendingAbility.critMultiplier,
-                };
+                Vector3 dirToTarget = col.transform.position - origin;
+                dirToTarget.y = 0f; // flatten to XZ plane
+                float angle = Vector3.Angle(transform.forward, dirToTarget);
+                if (angle > pendingAbility.coneHalfAngle)
+                    continue;
 
-                float final = DamageSystem.CalculateDamage(
-                    info,
-                    baseStats != null ? baseStats.basePhysicalDamage : 0f,
-                    baseStats != null ? baseStats.baseMagicDamage : 0f,
-                    enemy.armor,
-                    enemy.magicResist
-                );
+                var enemy = col.GetComponentInParent<EnemyHealth>();
+                if (enemy != null)
+                    ApplyAbilityDamageToEnemy(enemy, pendingAbility, "(cone)");
+            }
+        }
+        else
+        {
+            // Sphere: original behavior — OverlapSphere centered at offset position.
+            Vector3 center = transform.position
+                + Vector3.up * (meleeVerticalOffset * visualScale)
+                + transform.forward * (pendingAbility.range * visualScale);
+            float scaledRadius = pendingAbility.radius * visualScale;
 
-                enemy.TakeDamage(final);
-                Debug.Log($"[Character] Ability '{pendingAbility.abilityName}' hit {enemy.name} for {final:F1} damage{(isCrit ? " (CRIT)" : "")}.");
+            if (pendingAbility.effectPrefab != null)
+                Instantiate(pendingAbility.effectPrefab, center, Quaternion.identity);
+
+            Collider[] hits = Physics.OverlapSphere(center, scaledRadius);
+            foreach (var col in hits)
+            {
+                if (col.transform.root == transform.root)
+                    continue;
+
+                var enemy = col.GetComponentInParent<EnemyHealth>();
+                if (enemy != null)
+                    ApplyAbilityDamageToEnemy(enemy, pendingAbility);
             }
         }
 
         pendingAbility = null;
+    }
+
+    private void ApplyAbilityDamageToEnemy(EnemyHealth enemy, AbilityData ability, string logSuffix = "")
+    {
+        bool isCrit = ability.allowCrit && baseStats != null
+            ? DamageSystem.RollCrit(baseStats.critChance)
+            : false;
+
+        var info = new DamageInfo
+        {
+            type              = ability.damageType,
+            baseDamage        = ability.baseDamage,
+            scaleWithPhysical = ability.scaleWithPhysical,
+            scaleMultiplier   = ability.scaleMultiplier,
+            allowCrit         = ability.allowCrit,
+            isCrit            = isCrit,
+            critMultiplier    = ability.critMultiplier,
+        };
+
+        float final = DamageSystem.CalculateDamage(
+            info,
+            baseStats != null ? baseStats.basePhysicalDamage : 0f,
+            baseStats != null ? baseStats.baseMagicDamage : 0f,
+            enemy.armor,
+            enemy.magicResist
+        );
+
+        enemy.TakeDamage(final);
+        string suffix = string.IsNullOrEmpty(logSuffix) ? "" : $" {logSuffix}";
+        Debug.Log($"[Character] Ability '{ability.abilityName}'{suffix} hit {enemy.name} for {final:F1} damage{(isCrit ? " (CRIT)" : "")}.");
     }
 
     public void PrimaryAttack()
@@ -296,10 +332,42 @@ public class Character : MonoBehaviour
             foreach (var a in abilities)
             {
                 if (a == null) continue;
-                Vector3 center = transform.position
-                    + Vector3.up * (meleeVerticalOffset * visualScale)
-                    + transform.forward * (a.range * visualScale);
-                Gizmos.DrawWireSphere(center, a.radius * visualScale);
+
+                if (a.shape == AbilityShape.Cone)
+                {
+                    // Draw cone as two bounding lines + an arc of line segments
+                    Vector3 origin = transform.position + Vector3.up * (meleeVerticalOffset * visualScale);
+                    float reach = a.range * visualScale;
+                    float halfAngle = a.coneHalfAngle;
+
+                    Quaternion leftRot  = Quaternion.AngleAxis(-halfAngle, Vector3.up);
+                    Quaternion rightRot = Quaternion.AngleAxis( halfAngle, Vector3.up);
+                    Vector3 leftDir  = leftRot  * transform.forward;
+                    Vector3 rightDir = rightRot * transform.forward;
+
+                    Gizmos.DrawLine(origin, origin + leftDir  * reach);
+                    Gizmos.DrawLine(origin, origin + rightDir * reach);
+
+                    // Arc: approximate with 16 line segments between left and right edges
+                    int arcSegments = 16;
+                    Vector3 prev = origin + leftDir * reach;
+                    for (int s = 1; s <= arcSegments; s++)
+                    {
+                        float t = (float)s / arcSegments;
+                        float angle = Mathf.Lerp(-halfAngle, halfAngle, t);
+                        Vector3 dir = Quaternion.AngleAxis(angle, Vector3.up) * transform.forward;
+                        Vector3 next = origin + dir * reach;
+                        Gizmos.DrawLine(prev, next);
+                        prev = next;
+                    }
+                }
+                else
+                {
+                    Vector3 center = transform.position
+                        + Vector3.up * (meleeVerticalOffset * visualScale)
+                        + transform.forward * (a.range * visualScale);
+                    Gizmos.DrawWireSphere(center, a.radius * visualScale);
+                }
             }
         }
 

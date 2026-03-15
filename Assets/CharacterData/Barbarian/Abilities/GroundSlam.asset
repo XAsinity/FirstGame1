@@ -19,11 +19,16 @@ MonoBehaviour:
   cooldown: 15
   resourceCost: 0
   damageType: 0
-  damage: 20
+  baseDamage: 20
   scaleWithPhysical: 1
   scaleMultiplier: 1
-  radius: 2
-  range: 15
+  allowCrit: 1
+  critMultiplier: 1.5
+  radius: 8
+  range: 8
+  shape: 1
+  coneHalfAngle: 40
   animatorTrigger: 
   effectPrefab: {fileID: 0}
   isUltimate: 0
+
