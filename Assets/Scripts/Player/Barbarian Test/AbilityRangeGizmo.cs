@@ -43,11 +43,19 @@ public class AbilityRangeGizmo : MonoBehaviour
         var a = character.abilities[index];
         if (a == null) return;
 
-        Vector3 center = transform.position + transform.forward * a.range;
-        Gizmos.DrawWireSphere(center, a.radius);
+        // Match Character.cs scaling: multiply range and radius by average lossyScale.
+        float visualScale = (transform.lossyScale.x + transform.lossyScale.y + transform.lossyScale.z) / 3f;
+        float meleeOffset = character.meleeVerticalOffset;
+
+        Vector3 center = transform.position
+            + Vector3.up * (meleeOffset * visualScale)
+            + transform.forward * (a.range * visualScale);
+        float scaledRadius = a.radius * visualScale;
+
+        Gizmos.DrawWireSphere(center, scaledRadius);
 
         // draw a small indicator for the center
-        Gizmos.DrawSphere(center, 0.05f);
+        Gizmos.DrawSphere(center, 0.05f * visualScale);
 
         // label with name & radius if available (Editor only)
 #if UNITY_EDITOR

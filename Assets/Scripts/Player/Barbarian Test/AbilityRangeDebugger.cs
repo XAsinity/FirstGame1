@@ -37,14 +37,21 @@ public class AbilityRangeDebugger : MonoBehaviour
             return;
         }
 
-        Vector3 center = transform.position + transform.forward * a.range;
-        Debug.Log($"Ability debug: {a.abilityName} center={center} radius={a.radius:F2}");
+        // Match Character.cs scaling: multiply offset, range and radius by average lossyScale.
+        float visualScale = (transform.lossyScale.x + transform.lossyScale.y + transform.lossyScale.z) / 3f;
+        float meleeOffset = character.meleeVerticalOffset;
+        Vector3 center = transform.position
+            + Vector3.up * (meleeOffset * visualScale)
+            + transform.forward * (a.range * visualScale);
+        float scaledRadius = a.radius * visualScale;
+
+        Debug.Log($"Ability debug: {a.abilityName} center={center} radius={scaledRadius:F2}");
 
         // Visual debug: wireframe sphere via multiple Debug.DrawLine calls
-        DrawDebugSphere(center, a.radius, debugDuration, Color.red);
+        DrawDebugSphere(center, scaledRadius, debugDuration, Color.red);
 
         // Actual overlap test (same as ability logic)
-        Collider[] hits = Physics.OverlapSphere(center, a.radius, hitLayers);
+        Collider[] hits = Physics.OverlapSphere(center, scaledRadius, hitLayers);
         foreach (var c in hits)
         {
             // draw a green sphere at each hit collider's position
