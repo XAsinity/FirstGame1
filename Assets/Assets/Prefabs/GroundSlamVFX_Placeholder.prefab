@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 3616966779762721941}
   - component: {fileID: 3234230824051830000}
   - component: {fileID: 6866517993611404076}
-  - component: {fileID: 2525313682200072727}
+  - component: {fileID: 8790676033544426645}
   m_Layer: 0
   m_Name: GroundSlamVFX_Placeholder
   m_TagString: Untagged
@@ -91,7 +91,7 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!114 &2525313682200072727
+--- !u!114 &8790676033544426645
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -100,10 +100,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 795414596576207771}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5da27369a0b16f546870673574d535a4, type: 3}
+  m_Script: {fileID: 11500000, guid: e9125f342b3f5124fa944c468ef635e1, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::AbilityVFXLifetime
-  lifetime: 2
-  scalePulse: 1
-  pulseMaxScale: 1.5
-  pulsePeakTime: 0.2
+  m_EditorClassIdentifier: Assembly-CSharp::GroundSlamWaveVFX
+  waveRows: 12
+  chunksPerRow: 4
+  chunkLifetime: 0.8
+  chunkPopHeight: 0.6
+  slideDistance: 0.6
+  angleJitter: 4
+  distanceJitter: 0.3
+  slideDurationFraction: 0.138
