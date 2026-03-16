@@ -163,7 +163,18 @@ public class Character : MonoBehaviour
             float coneReach = pendingAbility.range * visualScale;
 
             if (pendingAbility.effectPrefab != null)
-                Instantiate(pendingAbility.effectPrefab, transform.position, transform.rotation);
+            {
+                var vfxObj = Instantiate(pendingAbility.effectPrefab, transform.position, transform.rotation);
+                var waveVFX = vfxObj.GetComponent<GroundSlamWaveVFX>();
+                if (waveVFX != null)
+                {
+                    waveVFX.InitFromAbility(
+                        coneReach,
+                        pendingAbility.coneHalfAngle,
+                        pendingAbility.waveSpeed
+                    );
+                }
+            }
 
             if (pendingAbility.waveSpeed > 0f)
             {

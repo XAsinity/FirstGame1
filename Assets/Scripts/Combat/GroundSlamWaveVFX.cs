@@ -64,9 +64,28 @@ public class GroundSlamWaveVFX : MonoBehaviour
     [Range(0.1f, 0.9f)]
     public float slideDurationFraction = 0.4f;
 
+    private bool initialized;
+
+    /// <summary>
+    /// Called by Character.cs after spawning this prefab to sync wave dimensions with AbilityData.
+    /// If this is never called, Start() falls back to the Inspector-configured defaults.
+    /// </summary>
+    public void InitFromAbility(float abilityRange, float abilityConeHalfAngle, float abilityWaveSpeed)
+    {
+        waveDistance   = abilityRange;
+        coneHalfAngle  = abilityConeHalfAngle;
+        waveSpeed      = abilityWaveSpeed;
+        // Scale chunkScale proportionally — base value of 0.5 was tuned for the default range of 8 units
+        chunkScale     = Mathf.Max(0.2f, 0.5f * (abilityRange / 8f));
+        initialized    = true;
+        StartCoroutine(SpawnWave());
+    }
+
     void Start()
     {
-        StartCoroutine(SpawnWave());
+        // Only auto-start if InitFromAbility was not called (fallback for Inspector defaults)
+        if (!initialized)
+            StartCoroutine(SpawnWave());
     }
 
     private IEnumerator SpawnWave()
