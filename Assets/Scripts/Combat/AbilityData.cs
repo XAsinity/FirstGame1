@@ -45,6 +45,9 @@ public class AbilityData : ScriptableObject
     [Range(10f, 90f)]
     public float coneHalfAngle = 40f;
 
+    [Tooltip("Speed at which the damage wave travels outward (units/sec). 0 = instant damage. Only used for Cone shape.")]
+    public float waveSpeed = 12f;
+
     [Header("VFX / Animation")]
     public string animatorTrigger; // exact trigger name in Animator
     public GameObject effectPrefab;

@@ -28,6 +28,7 @@ MonoBehaviour:
   range: 8
   shape: 1
   coneHalfAngle: 40
+  waveSpeed: 12
   animatorTrigger: 
   effectPrefab: {fileID: 795414596576207771, guid: ea69492d051e55d4792cbca65d547acb, type: 3}
   isUltimate: 0
