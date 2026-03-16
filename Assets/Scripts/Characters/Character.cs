@@ -162,30 +162,31 @@ public class Character : MonoBehaviour
             Vector3 origin = transform.position + Vector3.up * (meleeVerticalOffset * visualScale);
             float coneReach = pendingAbility.range * visualScale;
 
+            GroundSlamWaveVFX waveVFX = null;
             if (pendingAbility.effectPrefab != null)
             {
                 var vfxObj = Instantiate(pendingAbility.effectPrefab, transform.position, transform.rotation);
-                var waveVFX = vfxObj.GetComponent<GroundSlamWaveVFX>();
+                waveVFX = vfxObj.GetComponent<GroundSlamWaveVFX>();
                 if (waveVFX != null)
-                {
-                    waveVFX.InitFromAbility(
-                        coneReach,
-                        pendingAbility.coneHalfAngle,
-                        pendingAbility.waveSpeed
-                    );
-                }
+                    waveVFX.InitFromAbility(coneReach, pendingAbility.coneHalfAngle);
             }
 
             if (pendingAbility.waveSpeed > 0f)
             {
                 // Progressive wave — damage applies as the wave front reaches enemies
-                StartCoroutine(ConeWaveDamage(pendingAbility, origin, coneReach, transform.forward));
+                StartCoroutine(ConeWaveDamage(pendingAbility, origin, coneReach, transform.forward, waveVFX));
                 pendingAbility = null;
                 return; // coroutine handles pendingAbility cleanup
             }
             else
             {
-                // Instant fallback (waveSpeed == 0)
+                // Instant fallback (waveSpeed == 0): show all VFX immediately then clean up
+                if (waveVFX != null)
+                {
+                    waveVFX.SetWaveFront(coneReach);
+                    waveVFX.OnWaveComplete();
+                }
+
                 Collider[] hits = Physics.OverlapSphere(origin, coneReach);
                 foreach (var col in hits)
                 {
@@ -265,7 +266,7 @@ public class Character : MonoBehaviour
     /// Enemies are only hit when the wave front reaches their distance from the caster.
     /// This syncs damage timing with the visual wave VFX (like Breach ult in Valorant).
     /// </summary>
-    private IEnumerator ConeWaveDamage(AbilityData ability, Vector3 origin, float maxReach, Vector3 forward)
+    private IEnumerator ConeWaveDamage(AbilityData ability, Vector3 origin, float maxReach, Vector3 forward, GroundSlamWaveVFX waveVFX)
     {
         float waveFront = 0f;
         float speed = ability.waveSpeed * VisualScale;
@@ -277,6 +278,9 @@ public class Character : MonoBehaviour
             float prevFront = waveFront;
             waveFront += speed * Time.deltaTime;
             waveFront = Mathf.Min(waveFront, maxReach);
+
+            if (waveVFX != null)
+                waveVFX.SetWaveFront(waveFront);
 
             // Check all colliders within the current wave front radius
             Collider[] hits = Physics.OverlapSphere(origin, waveFront);
@@ -310,6 +314,9 @@ public class Character : MonoBehaviour
 
             yield return null; // wait one frame
         }
+
+        if (waveVFX != null)
+            waveVFX.OnWaveComplete();
 
         Debug.Log($"[Character] Cone wave for '{ability.abilityName}' complete. Hit {alreadyHit.Count} enemies.");
     }

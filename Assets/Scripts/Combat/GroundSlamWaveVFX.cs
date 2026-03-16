@@ -3,11 +3,13 @@ using UnityEngine;
 
 /// <summary>
 /// VFX script that simulates a ground rupture wave spreading outward in a cone shape.
-/// Spawns rows of placeholder cubes that appear progressively further from the origin,
-/// like the ground cracking/erupting outward (Breach ult / anime ground slam style).
+/// Spawns rows of placeholder cubes as the wave front advances, driven every frame by
+/// Character.cs via SetWaveFront(). This keeps VFX and damage perfectly in sync — one
+/// clock, one source of truth.
 ///
-/// Wave dimensions (distance, cone angle, speed, chunk scale) are set automatically
-/// by Character.cs via InitFromAbility() using values from AbilityData.
+/// Wave dimensions (distance, cone angle, chunk scale) are set automatically by
+/// Character.cs via InitFromAbility() using values from AbilityData. Wave speed is
+/// not stored here — the wave front is fed in each frame by the damage coroutine.
 /// Only visual tuning knobs (rows, lifetime, pop height, jitter, etc.) remain
 /// editable on the prefab Inspector.
 ///
@@ -22,14 +24,19 @@ using UnityEngine;
 public class GroundSlamWaveVFX : MonoBehaviour
 {
     // -----------------------------------------------------------------------
-    // These are set at runtime by Character.cs → InitFromAbility().
-    // They read from AbilityData (range, coneHalfAngle, waveSpeed).
-    // Do NOT expose in Inspector — they'd just get overwritten.
+    // Set at runtime by Character.cs → InitFromAbility(). Never expose in
+    // Inspector — they'd conflict with the driven model.
     // -----------------------------------------------------------------------
-    private float waveSpeed;
+    private Vector3 waveOrigin;
+    private Vector3 waveForward;
     private float waveDistance;
     private float coneHalfAngle;
     private float chunkScale;
+
+    private int nextRow;
+    private float[] rowDistances;
+    private bool initialized;
+    private bool waveComplete;
 
     [Header("Chunk Settings")]
     [Tooltip("Number of rows of chunks spawned as the wave travels outward.")]
@@ -60,96 +67,104 @@ public class GroundSlamWaveVFX : MonoBehaviour
     [Range(0.1f, 0.9f)]
     public float slideDurationFraction = 0.4f;
 
-    private bool initialized;
-
     /// <summary>
-    /// Called by Character.cs after spawning this prefab to sync wave dimensions with AbilityData.
-    /// This is the ONLY way waveDistance, coneHalfAngle, waveSpeed, and chunkScale get set.
+    /// Called by Character.cs after spawning this prefab to configure wave dimensions.
+    /// Pre-computes per-row distance thresholds used by SetWaveFront().
+    /// Wave speed is not needed here — the wave front is driven each frame by the damage coroutine.
     /// </summary>
-    public void InitFromAbility(float abilityRange, float abilityConeHalfAngle, float abilityWaveSpeed)
+    public void InitFromAbility(float abilityRange, float abilityConeHalfAngle)
     {
+        waveOrigin = transform.position;
+        waveForward = transform.forward;
         waveDistance = abilityRange;
         coneHalfAngle = abilityConeHalfAngle;
-        waveSpeed = abilityWaveSpeed;
         chunkScale = Mathf.Max(0.2f, 0.5f * (abilityRange / 8f));
+
+        rowDistances = new float[waveRows];
+        for (int i = 0; i < waveRows; i++)
+            rowDistances[i] = (float)(i + 1) / waveRows * waveDistance;
+
+        nextRow = 0;
         initialized = true;
-        StartCoroutine(SpawnWave());
+        waveComplete = false;
     }
 
-    void Start()
+    /// <summary>
+    /// Called every frame by Character.cs's ConeWaveDamage coroutine with the current
+    /// wave front distance. Spawns any rows whose distance threshold has been reached.
+    /// This is the ONLY thing that advances the VFX — no independent timer.
+    /// </summary>
+    public void SetWaveFront(float currentDistance)
     {
-        if (!initialized)
+        if (!initialized) return;
+
+        while (nextRow < waveRows && currentDistance >= rowDistances[nextRow])
         {
-            // Fallback: if somehow spawned without InitFromAbility, use safe defaults
-            // This shouldn't happen in normal gameplay — log a warning.
-            Debug.LogWarning("[GroundSlamWaveVFX] Start() fired without InitFromAbility — using fallback defaults. " +
-                             "Make sure Character.cs calls InitFromAbility after Instantiate.");
-            waveDistance = 8f;
-            coneHalfAngle = 40f;
-            waveSpeed = 12f;
-            chunkScale = 0.5f;
-            StartCoroutine(SpawnWave());
+            SpawnRow(nextRow);
+            nextRow++;
         }
     }
 
-    private IEnumerator SpawnWave()
+    /// <summary>
+    /// Called by Character.cs when the damage wave finishes. Starts the self-destruct
+    /// timer so the VFX GameObject is cleaned up after the last chunks fade out.
+    /// </summary>
+    public void OnWaveComplete()
     {
-        Vector3 waveOrigin = transform.position;
-        Vector3 waveForward = transform.forward;
+        if (waveComplete) return;
+        waveComplete = true;
+        StartCoroutine(SelfDestructAfterDelay(chunkLifetime + 0.3f));
+    }
 
-        const float minWaveSpeed = 0.1f;
-        float totalTime = waveDistance / Mathf.Max(waveSpeed, minWaveSpeed);
-        float rowDelay = totalTime / Mathf.Max(waveRows, 1);
-
-        for (int row = 0; row < waveRows; row++)
-        {
-            float t = (float)(row + 1) / waveRows;
-            float rowDist = t * waveDistance;
-
-            for (int c = 0; c < chunksPerRow; c++)
-            {
-                float lateralT = chunksPerRow > 1 ? (float)c / (chunksPerRow - 1) : 0.5f;
-                float angleOffset = Mathf.Lerp(-coneHalfAngle, coneHalfAngle, lateralT);
-                angleOffset += Random.Range(-angleJitter, angleJitter);
-                float distJitter = Random.Range(-distanceJitter, distanceJitter);
-
-                Vector3 dir = Quaternion.AngleAxis(angleOffset, Vector3.up) * waveForward;
-
-                Vector3 targetPos = waveOrigin + dir * (rowDist + distJitter);
-                targetPos.y = waveOrigin.y;
-
-                Vector3 startPos = waveOrigin + dir * Mathf.Max(0f, rowDist - slideDistance + distJitter);
-                startPos.y = waveOrigin.y;
-
-                GameObject chunk = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                chunk.name = $"GroundChunk_r{row}_c{c}";
-
-                var col = chunk.GetComponent<Collider>();
-                if (col != null) Destroy(col);
-
-                chunk.transform.position = startPos;
-                float scale = chunkScale + Random.Range(-0.15f, 0.15f);
-                scale *= Mathf.Lerp(0.7f, 1.3f, t);
-                chunk.transform.localScale = new Vector3(scale, scale * 0.5f, scale);
-                chunk.transform.rotation = Quaternion.Euler(
-                    Random.Range(-15f, 15f),
-                    Random.Range(0f, 360f),
-                    Random.Range(-15f, 15f)
-                );
-
-                var eruption = chunk.AddComponent<GroundChunkEruption>();
-                eruption.startPos = startPos;
-                eruption.targetPos = targetPos;
-                eruption.popHeight = chunkPopHeight + Random.Range(-0.1f, 0.2f);
-                eruption.lifetime = chunkLifetime + Random.Range(-0.1f, 0.2f);
-                eruption.slideDurationFraction = slideDurationFraction;
-            }
-
-            yield return new WaitForSeconds(rowDelay);
-        }
-
-        yield return new WaitForSeconds(chunkLifetime + 0.3f);
+    private IEnumerator SelfDestructAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
         Destroy(gameObject);
+    }
+
+    private void SpawnRow(int row)
+    {
+        float t = (float)(row + 1) / waveRows;
+        float rowDist = rowDistances[row];
+
+        for (int c = 0; c < chunksPerRow; c++)
+        {
+            float lateralT = chunksPerRow > 1 ? (float)c / (chunksPerRow - 1) : 0.5f;
+            float angleOffset = Mathf.Lerp(-coneHalfAngle, coneHalfAngle, lateralT);
+            angleOffset += Random.Range(-angleJitter, angleJitter);
+            float distJitter = Random.Range(-distanceJitter, distanceJitter);
+
+            Vector3 dir = Quaternion.AngleAxis(angleOffset, Vector3.up) * waveForward;
+
+            Vector3 targetPos = waveOrigin + dir * (rowDist + distJitter);
+            targetPos.y = waveOrigin.y;
+
+            Vector3 startPos = waveOrigin + dir * Mathf.Max(0f, rowDist - slideDistance + distJitter);
+            startPos.y = waveOrigin.y;
+
+            GameObject chunk = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            chunk.name = $"GroundChunk_r{row}_c{c}";
+
+            var col = chunk.GetComponent<Collider>();
+            if (col != null) Destroy(col);
+
+            chunk.transform.position = startPos;
+            float scale = chunkScale + Random.Range(-0.15f, 0.15f);
+            scale *= Mathf.Lerp(0.7f, 1.3f, t);
+            chunk.transform.localScale = new Vector3(scale, scale * 0.5f, scale);
+            chunk.transform.rotation = Quaternion.Euler(
+                Random.Range(-15f, 15f),
+                Random.Range(0f, 360f),
+                Random.Range(-15f, 15f)
+            );
+
+            var eruption = chunk.AddComponent<GroundChunkEruption>();
+            eruption.startPos = startPos;
+            eruption.targetPos = targetPos;
+            eruption.popHeight = chunkPopHeight + Random.Range(-0.1f, 0.2f);
+            eruption.lifetime = chunkLifetime + Random.Range(-0.1f, 0.2f);
+            eruption.slideDurationFraction = slideDurationFraction;
+        }
     }
 
     /// <summary>
