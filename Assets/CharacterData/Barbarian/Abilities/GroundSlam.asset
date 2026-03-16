@@ -29,6 +29,5 @@ MonoBehaviour:
   shape: 1
   coneHalfAngle: 40
   animatorTrigger: 
-  effectPrefab: {fileID: 0}
+  effectPrefab: {fileID: 795414596576207771, guid: ea69492d051e55d4792cbca65d547acb, type: 3}
   isUltimate: 0
-
