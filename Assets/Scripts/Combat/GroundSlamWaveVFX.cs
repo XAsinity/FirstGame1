@@ -6,11 +6,14 @@ using UnityEngine;
 /// Spawns rows of placeholder cubes that appear progressively further from the origin,
 /// like the ground cracking/erupting outward (Breach ult / anime ground slam style).
 ///
+/// Each chunk spawns slightly BEHIND its target position and slides outward to it,
+/// giving the impression of a shockwave pushing debris forward.
+///
 /// The wave speed here should roughly match AbilityData.waveSpeed so the VFX and damage
 /// are visually synced. Tweak waveSpeed and waveRows to taste.
 ///
 /// PLACEHOLDER: The cubes are stand-in visuals. When real VFX are ready, replace this
-/// script on the prefab — the Character.cs spawning code doesn't need to change.
+/// prefab — the Character.cs spawning code doesn't need to change.
 ///
 /// SETUP:
 /// 1. Create an empty GameObject in Unity
@@ -41,11 +44,25 @@ public class GroundSlamWaveVFX : MonoBehaviour
     [Tooltip("Base scale of each chunk cube.")]
     public float chunkScale = 0.5f;
 
-    [Tooltip("How long each chunk stays visible before fading/destroying.")]
+    [Tooltip("How long each chunk stays visible before shrinking and destroying.")]
     public float chunkLifetime = 0.8f;
 
     [Tooltip("How high chunks pop up on spawn (simulates ground erupting).")]
     public float chunkPopHeight = 0.6f;
+
+    [Tooltip("How far behind its target position each chunk starts (slides forward from here).")]
+    public float slideDistance = 1.5f;
+
+    [Header("Jitter / Randomness")]
+    [Tooltip("Random angle spread added to each chunk direction (degrees). Adds organic variation.")]
+    public float angleJitter = 4f;
+
+    [Tooltip("Random distance spread added to each chunk position (units). Adds organic variation.")]
+    public float distanceJitter = 0.3f;
+
+    [Tooltip("Fraction of a chunk's lifetime spent sliding to its target position (0–1). Lower = snappier slide.")]
+    [Range(0.1f, 0.9f)]
+    public float slideDurationFraction = 0.4f;
 
     void Start()
     {
@@ -54,14 +71,16 @@ public class GroundSlamWaveVFX : MonoBehaviour
 
     private IEnumerator SpawnWave()
     {
+        Vector3 waveOrigin = transform.position;
+        Vector3 waveForward = transform.forward;
+
         // Time between each row spawning, based on wave speed and distance
-        const float minWaveSpeed = 0.1f; // guard against division by zero or near-zero speed
+        const float minWaveSpeed = 0.1f;
         float totalTime = waveDistance / Mathf.Max(waveSpeed, minWaveSpeed);
         float rowDelay = totalTime / Mathf.Max(waveRows, 1);
 
         for (int row = 0; row < waveRows; row++)
         {
-            // This row's distance from the caster (0 = at feet, waveDistance = max range)
             float t = (float)(row + 1) / waveRows;
             float rowDist = t * waveDistance;
 
@@ -70,14 +89,18 @@ public class GroundSlamWaveVFX : MonoBehaviour
                 // Spread chunks across the cone width at this distance
                 float lateralT = chunksPerRow > 1 ? (float)c / (chunksPerRow - 1) : 0.5f;
                 float angleOffset = Mathf.Lerp(-coneHalfAngle, coneHalfAngle, lateralT);
+                angleOffset += Random.Range(-angleJitter, angleJitter);
+                float distJitter = Random.Range(-distanceJitter, distanceJitter);
 
-                // Add small random jitter
-                angleOffset += Random.Range(-4f, 4f);
-                float distJitter = Random.Range(-0.3f, 0.3f);
+                Vector3 dir = Quaternion.AngleAxis(angleOffset, Vector3.up) * waveForward;
 
-                Vector3 dir = Quaternion.AngleAxis(angleOffset, Vector3.up) * transform.forward;
-                Vector3 spawnPos = transform.position + dir * (rowDist + distJitter);
-                spawnPos.y = transform.position.y; // ground level
+                // Target position: where the chunk should end up
+                Vector3 targetPos = waveOrigin + dir * (rowDist + distJitter);
+                targetPos.y = waveOrigin.y;
+
+                // Start position: slightly behind the target (chunk slides outward)
+                Vector3 startPos = waveOrigin + dir * Mathf.Max(0f, rowDist - slideDistance + distJitter);
+                startPos.y = waveOrigin.y;
 
                 // Create a cube chunk
                 GameObject chunk = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -87,22 +110,24 @@ public class GroundSlamWaveVFX : MonoBehaviour
                 var col = chunk.GetComponent<Collider>();
                 if (col != null) Destroy(col);
 
-                // Position and random scale
-                chunk.transform.position = spawnPos;
+                // Position at start, random scale
+                chunk.transform.position = startPos;
                 float scale = chunkScale + Random.Range(-0.15f, 0.15f);
-                // Chunks further away are slightly larger (perspective of spreading)
-                scale *= Mathf.Lerp(0.7f, 1.3f, t);
-                chunk.transform.localScale = new Vector3(scale, scale * 0.5f, scale); // flat-ish
+                scale *= Mathf.Lerp(0.7f, 1.3f, t); // further chunks slightly larger
+                chunk.transform.localScale = new Vector3(scale, scale * 0.5f, scale);
                 chunk.transform.rotation = Quaternion.Euler(
                     Random.Range(-15f, 15f),
                     Random.Range(0f, 360f),
                     Random.Range(-15f, 15f)
                 );
 
-                // Add the eruption behavior
+                // Add the eruption + slide behavior
                 var eruption = chunk.AddComponent<GroundChunkEruption>();
+                eruption.startPos = startPos;
+                eruption.targetPos = targetPos;
                 eruption.popHeight = chunkPopHeight + Random.Range(-0.1f, 0.2f);
                 eruption.lifetime = chunkLifetime + Random.Range(-0.1f, 0.2f);
+                eruption.slideDurationFraction = slideDurationFraction;
             }
 
             yield return new WaitForSeconds(rowDelay);
@@ -114,21 +139,23 @@ public class GroundSlamWaveVFX : MonoBehaviour
     }
 
     /// <summary>
-    /// Makes a single ground chunk pop up from the ground then settle/shrink away.
-    /// Simulates a piece of ground erupting upward then falling back.
+    /// Makes a single ground chunk slide outward from start to target while popping up
+    /// from the ground, then settling and shrinking away.
+    /// Simulates a piece of ground being pushed outward by a shockwave.
     /// </summary>
-    private class GroundChunkEruption : MonoBehaviour
+    public class GroundChunkEruption : MonoBehaviour
     {
+        [HideInInspector] public Vector3 startPos;
+        [HideInInspector] public Vector3 targetPos;
         public float popHeight = 0.6f;
         public float lifetime = 0.8f;
+        [HideInInspector] public float slideDurationFraction = 0.4f;
 
-        private Vector3 startPos;
         private Vector3 originalScale;
         private float elapsed;
 
         void Start()
         {
-            startPos = transform.position;
             originalScale = transform.localScale;
         }
 
@@ -137,17 +164,21 @@ public class GroundSlamWaveVFX : MonoBehaviour
             elapsed += Time.deltaTime;
             float t = Mathf.Clamp01(elapsed / lifetime);
 
-            // Pop up quickly then settle back down (like ground erupting)
-            // Peak at t=0.2, back to ground by t=0.6, then just sit there shrinking
+            // Slide outward from start to target (fast at first, easing out)
+            float slideFraction = Mathf.Max(slideDurationFraction, 0.01f);
+            float slideT = 1f - Mathf.Pow(1f - Mathf.Clamp01(t / slideFraction), 2f); // ease-out
+            Vector3 basePos = Vector3.Lerp(startPos, targetPos, slideT);
+
+            // Pop up quickly then settle back down
             float popT;
-            if (t < 0.2f)
-                popT = t / 0.2f; // rise
-            else if (t < 0.6f)
-                popT = 1f - ((t - 0.2f) / 0.4f); // fall back
+            if (t < 0.15f)
+                popT = t / 0.15f; // rise fast
+            else if (t < 0.45f)
+                popT = 1f - ((t - 0.15f) / 0.3f); // fall back
             else
                 popT = 0f; // on ground
 
-            transform.position = startPos + Vector3.up * (popHeight * popT);
+            transform.position = basePos + Vector3.up * (popHeight * popT);
 
             // Shrink away in the last 40% of lifetime
             if (t > 0.6f)
