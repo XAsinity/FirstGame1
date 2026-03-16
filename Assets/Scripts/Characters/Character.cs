@@ -158,29 +158,39 @@ public class Character : MonoBehaviour
 
         if (pendingAbility.shape == AbilityShape.Cone)
         {
-            // Cone: OverlapSphere centered on the player using range as the cone reach,
-            // then filter by angle to create a pizza-slice/cone area in front.
+            // Cone wave: damage travels outward over time, synced with VFX
             Vector3 origin = transform.position + Vector3.up * (meleeVerticalOffset * visualScale);
             float coneReach = pendingAbility.range * visualScale;
 
             if (pendingAbility.effectPrefab != null)
                 Instantiate(pendingAbility.effectPrefab, transform.position, transform.rotation);
 
-            Collider[] hits = Physics.OverlapSphere(origin, coneReach);
-            foreach (var col in hits)
+            if (pendingAbility.waveSpeed > 0f)
             {
-                if (col.transform.root == transform.root)
-                    continue;
+                // Progressive wave — damage applies as the wave front reaches enemies
+                StartCoroutine(ConeWaveDamage(pendingAbility, origin, coneReach, transform.forward));
+                pendingAbility = null;
+                return; // coroutine handles pendingAbility cleanup
+            }
+            else
+            {
+                // Instant fallback (waveSpeed == 0)
+                Collider[] hits = Physics.OverlapSphere(origin, coneReach);
+                foreach (var col in hits)
+                {
+                    if (col.transform.root == transform.root)
+                        continue;
 
-                Vector3 dirToTarget = col.transform.position - origin;
-                dirToTarget.y = 0f; // flatten to XZ plane
-                float angle = Vector3.Angle(transform.forward, dirToTarget);
-                if (angle > pendingAbility.coneHalfAngle)
-                    continue;
+                    Vector3 dirToTarget = col.transform.position - origin;
+                    dirToTarget.y = 0f;
+                    float angle = Vector3.Angle(transform.forward, dirToTarget);
+                    if (angle > pendingAbility.coneHalfAngle)
+                        continue;
 
-                var enemy = col.GetComponentInParent<EnemyHealth>();
-                if (enemy != null)
-                    ApplyAbilityDamageToEnemy(enemy, pendingAbility, "(cone)");
+                    var enemy = col.GetComponentInParent<EnemyHealth>();
+                    if (enemy != null)
+                        ApplyAbilityDamageToEnemy(enemy, pendingAbility, "(cone)");
+                }
             }
         }
         else
@@ -237,6 +247,60 @@ public class Character : MonoBehaviour
         enemy.TakeDamage(final);
         string suffix = string.IsNullOrEmpty(logSuffix) ? "" : $" {logSuffix}";
         Debug.Log($"[Character] Ability '{ability.abilityName}'{suffix} hit {enemy.name} for {final:F1} damage{(isCrit ? " (CRIT)" : "")}.");
+    }
+
+    /// <summary>
+    /// Coroutine that progressively expands a damage wave outward through the cone.
+    /// Enemies are only hit when the wave front reaches their distance from the caster.
+    /// This syncs damage timing with the visual wave VFX (like Breach ult in Valorant).
+    /// </summary>
+    private IEnumerator ConeWaveDamage(AbilityData ability, Vector3 origin, float maxReach, Vector3 forward)
+    {
+        float waveFront = 0f;
+        float speed = ability.waveSpeed * VisualScale;
+        float halfAngle = ability.coneHalfAngle;
+        HashSet<EnemyHealth> alreadyHit = new HashSet<EnemyHealth>();
+
+        while (waveFront < maxReach)
+        {
+            float prevFront = waveFront;
+            waveFront += speed * Time.deltaTime;
+            waveFront = Mathf.Min(waveFront, maxReach);
+
+            // Check all colliders within the current wave front radius
+            Collider[] hits = Physics.OverlapSphere(origin, waveFront);
+            foreach (var col in hits)
+            {
+                if (col.transform.root == transform.root)
+                    continue;
+
+                var enemy = col.GetComponentInParent<EnemyHealth>();
+                if (enemy == null || alreadyHit.Contains(enemy))
+                    continue;
+
+                // Check cone angle
+                Vector3 dirToTarget = col.transform.position - origin;
+                dirToTarget.y = 0f;
+                float angle = Vector3.Angle(forward, dirToTarget);
+                if (angle > halfAngle)
+                    continue;
+
+                // Check if enemy is within the wave band (between previous and current front)
+                float dist = dirToTarget.magnitude;
+                // 0.8 tolerance: slight overlap with previous frame's band to avoid enemies slipping through
+                // at high frame rates or when standing very close to the caster.
+                const float waveBandTolerance = 0.8f;
+                if (dist <= waveFront && dist >= prevFront * waveBandTolerance)
+                {
+                    ApplyAbilityDamageToEnemy(enemy, ability, "(cone wave)");
+                    alreadyHit.Add(enemy);
+                }
+            }
+
+            yield return null; // wait one frame
+        }
+
+        Debug.Log($"[Character] Cone wave for '{ability.abilityName}' complete. Hit {alreadyHit.Count} enemies.");
     }
 
     public void PrimaryAttack()
