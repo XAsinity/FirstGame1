@@ -442,7 +442,7 @@ public class ArenaGenerator : MonoBehaviour
         if (obstaclePrefabs != null && obstaclePrefabs.Length > 0)
         {
             var prefab = obstaclePrefabs[Random.Range(0, obstaclePrefabs.Length)];
-            obstacle = Instantiate(prefab, position, Quaternion.identity, _obstaclesContainer);
+            obstacle = Instantiate(prefab, position, prefab.transform.rotation, _obstaclesContainer);
             obstacle.name = $"Obstacle_{index}";
             isPlaceholder = false;
         }
@@ -468,7 +468,8 @@ public class ArenaGenerator : MonoBehaviour
         }
 
         // Random Y rotation for visual variety.
-        obstacle.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+        // Compose on top of the existing rotation so prefab X/Z corrections (e.g. MeshyAI Z-up fix) are preserved.
+        obstacle.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f) * obstacle.transform.rotation;
 
         // Mark as navigation-static and tag it so other systems can find it.
         SetNavigationStatic(obstacle);
