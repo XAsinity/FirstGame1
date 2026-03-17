@@ -57,7 +57,8 @@ public class ArenaGenerator : MonoBehaviour
     /// Optional floor prefab (e.g. a Quad with your MeshyAI texture).
     /// When null the script creates a default white Quad at runtime.
     /// </summary>
-    [Tooltip("Textured floor prefab (Quad or Plane). Leave null to use a plain white placeholder.")]
+    [Tooltip("Textured floor prefab. Supports Unity Quads (detected automatically and rotated X=90 to lie flat) " +
+             "and Planes or other flat meshes that already lie in the XZ plane. Leave null for a plain white placeholder.")]
     public GameObject floorPrefab;
 
     /// <summary>
@@ -155,6 +156,13 @@ public class ArenaGenerator : MonoBehaviour
     /// <summary>Radius of each obstacle's gizmo sphere drawn in the scene view.</summary>
     private const float ObstacleGizmoRadius = 0.4f;
 
+    /// <summary>
+    /// Divisor used when computing default texture tiling for the floor.
+    /// A value of 4 tiles the texture once every quarter of the arena width/length,
+    /// preventing a single copy from stretching across the entire surface.
+    /// </summary>
+    private const float TextureTilingDivisor = 4f;
+
     // -------------------------------------------------------------------------
     // Private state
     // -------------------------------------------------------------------------
@@ -232,16 +240,45 @@ public class ArenaGenerator : MonoBehaviour
     private void SpawnFloor()
     {
         GameObject floor;
+        bool isQuadMesh;
 
         if (floorPrefab != null)
         {
-            floor = Instantiate(floorPrefab, Vector3.zero, Quaternion.identity, _floorContainer);
+            // Detect whether the prefab uses a Unity Quad mesh (faces +Z by default).
+            // If so, rotate X=90 to lay it flat; Planes and other flat meshes already
+            // lie in the XZ plane and need no rotation.
+            // Unity's built-in Quad mesh is named exactly "Quad".
+            var mf = floorPrefab.GetComponent<MeshFilter>();
+            isQuadMesh = mf != null && mf.sharedMesh != null &&
+                         mf.sharedMesh.name == "Quad";
+
+            Quaternion floorRotation = isQuadMesh ? Quaternion.Euler(90f, 0f, 0f) : Quaternion.identity;
+
+            floor = Instantiate(floorPrefab, Vector3.zero, floorRotation, _floorContainer);
             floor.name = "Floor";
-            // Scale the prefab to match the requested arena dimensions.
-            floor.transform.localScale = new Vector3(arenaWidth, arenaLength, 1f);
+
+            // For a Quad rotated X=90, local-Y maps to world-Z so (arenaWidth, arenaLength, 1)
+            // fills the XZ plane correctly.  For a Plane/flat mesh the axes already align:
+            // (arenaWidth, 1, arenaLength) maps directly to world X, Y, Z.
+            floor.transform.localScale = isQuadMesh
+                ? new Vector3(arenaWidth, arenaLength, 1f)
+                : new Vector3(arenaWidth, 1f, arenaLength);
+
+            // Auto-tile the texture when it is still at the default (1, 1) tiling so
+            // it does not stretch a single copy across the entire arena surface.
+            // Check sharedMaterial to avoid creating an unnecessary material instance.
+            var rend = floor.GetComponent<Renderer>();
+            if (rend != null && rend.sharedMaterial != null)
+            {
+                if (rend.sharedMaterial.mainTextureScale == Vector2.one)
+                    rend.material.mainTextureScale = new Vector2(arenaWidth / TextureTilingDivisor, arenaLength / TextureTilingDivisor);
+            }
         }
         else
         {
+            // Placeholder path — always a Quad, so mark accordingly.
+            isQuadMesh = true;
+
             // Placeholder: white Quad rotated to lie flat.
             floor = GameObject.CreatePrimitive(PrimitiveType.Quad);
             floor.name = "Floor_Placeholder";
@@ -262,11 +299,26 @@ public class ArenaGenerator : MonoBehaviour
             }
         }
 
-        // Ensure there is a thin BoxCollider so the NavMesh surface has geometry to bake on.
+        // Ensure there is a thin BoxCollider so the NavMesh surface has geometry to bake on
+        // and so the player and enemies land on the floor instead of falling through it.
         if (floor.GetComponent<BoxCollider>() == null)
         {
             var col = floor.AddComponent<BoxCollider>();
-            col.size = new Vector3(1f, FloorColliderThickness / Mathf.Max(floor.transform.localScale.y, MinScaleGuard), 1f);
+            if (isQuadMesh)
+            {
+                // Quad is rotated X=90: local-Z maps to world-Y, so thin the Z component.
+                // localScale.z == 1 for Quads, so the division keeps FloorColliderThickness
+                // in world-Y after scale.
+                col.size = new Vector3(1f, 1f,
+                    FloorColliderThickness / Mathf.Max(floor.transform.localScale.z, MinScaleGuard));
+            }
+            else
+            {
+                // Flat mesh with identity rotation: local-Y maps to world-Y, thin the Y component.
+                col.size = new Vector3(1f,
+                    FloorColliderThickness / Mathf.Max(floor.transform.localScale.y, MinScaleGuard),
+                    1f);
+            }
         }
 
         // Tag floor so NavMesh can identify it.
