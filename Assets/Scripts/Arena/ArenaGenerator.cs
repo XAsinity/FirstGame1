@@ -301,24 +301,27 @@ public class ArenaGenerator : MonoBehaviour
 
         // Ensure there is a thin BoxCollider so the NavMesh surface has geometry to bake on
         // and so the player and enemies land on the floor instead of falling through it.
-        if (floor.GetComponent<BoxCollider>() == null)
+        // Remove ALL existing colliders from the prefab first — Unity's default Quad comes
+        // with a MeshCollider that causes floating-point precision issues at large scales
+        // (400×400), causing the player to fall through the floor beyond ~40×40.
+        foreach (var existingCol in floor.GetComponents<Collider>())
+            DestroyImmediate(existingCol);
+
+        var col = floor.AddComponent<BoxCollider>();
+        if (isQuadMesh)
         {
-            var col = floor.AddComponent<BoxCollider>();
-            if (isQuadMesh)
-            {
-                // Quad is rotated X=90: local-Z maps to world-Y, so thin the Z component.
-                // localScale.z == 1 for Quads, so the division keeps FloorColliderThickness
-                // in world-Y after scale.
-                col.size = new Vector3(1f, 1f,
-                    FloorColliderThickness / Mathf.Max(floor.transform.localScale.z, MinScaleGuard));
-            }
-            else
-            {
-                // Flat mesh with identity rotation: local-Y maps to world-Y, thin the Y component.
-                col.size = new Vector3(1f,
-                    FloorColliderThickness / Mathf.Max(floor.transform.localScale.y, MinScaleGuard),
-                    1f);
-            }
+            // Quad is rotated X=90: local-Z maps to world-Y, so thin the Z component.
+            // localScale.z == 1 for Quads, so the division keeps FloorColliderThickness
+            // in world-Y after scale.
+            col.size = new Vector3(1f, 1f,
+                FloorColliderThickness / Mathf.Max(floor.transform.localScale.z, MinScaleGuard));
+        }
+        else
+        {
+            // Flat mesh with identity rotation: local-Y maps to world-Y, thin the Y component.
+            col.size = new Vector3(1f,
+                FloorColliderThickness / Mathf.Max(floor.transform.localScale.y, MinScaleGuard),
+                1f);
         }
 
         // Tag floor so NavMesh can identify it.
